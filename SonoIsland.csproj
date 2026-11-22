@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AssemblyName>SonoIsland</AssemblyName>
+    <RootNamespace>SonoIsland</RootNamespace>
+    <Version>2.1.0</Version>
+    <Authors>Sono Island contributors</Authors>
+    <Product>Sono Island</Product>
+    <Description>Dynamic-island style top-edge overlay for Spotify on Windows 11.</Description>
+    <RepositoryUrl>https://github.com/USER/SonoIsland</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Plus Jakarta Sans (SIL OFL 1.1). License: Assets/Fonts/OFL-PlusJakartaSans.txt -->
+    <Resource Include="Assets\Fonts\*.ttf" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Skia path: raw bitmap rendering pushed through UpdateLayeredWindow (see Overlay/). -->
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
+    <None Include="Assets\Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

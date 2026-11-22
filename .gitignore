@@ -1,0 +1,24 @@
+# Build output
+bin/
+obj/
+publish/
+shots/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# Test / coverage
+[Tt]est[Rr]esults/
+coverage*.xml
+
+# OS
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Logs and local app data
+*.log

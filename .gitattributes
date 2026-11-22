@@ -1,0 +1,14 @@
+# Normalise line endings; keep binaries untouched.
+* text=auto
+
+*.png binary
+*.jpg binary
+*.ttf binary
+*.dll binary
+*.exe binary
+
+*.ps1 text eol=crlf
+*.cs text eol=crlf
+*.xaml text eol=crlf
+*.csproj text eol=crlf
+*.sln text eol=crlf
