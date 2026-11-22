@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
-using SonoIsland.Services;
+using FloatIsland.Services;
 
-namespace SonoIsland.Overlay;
+namespace FloatIsland.Overlay;
 
 /// <summary>
 /// A real Win32 layered popup (WS_EX_LAYERED + UpdateLayeredWindow), the same shape of
@@ -139,7 +139,7 @@ internal sealed class OverlayWindow : IDisposable
         int w = (int)Math.Round(widthDip), h = (int)Math.Round(heightDip);
         Handle = CreateWindowEx(
             WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
-            "SonoIslandSkia", "SonoIsland",
+            "FloatIslandSkia", "FloatIsland",
             WS_POPUP,
             0, 0, w, h, IntPtr.Zero, IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
 
@@ -286,7 +286,7 @@ internal sealed class OverlayWindow : IDisposable
             cbSize = Marshal.SizeOf<WNDCLASSEX>(),
             lpfnWndProc = _proc,
             hInstance = GetModuleHandle(null),
-            lpszClassName = "SonoIslandSkia",
+            lpszClassName = "FloatIslandSkia",
             hCursor = LoadCursor(IntPtr.Zero, 32512u),   // IDC_ARROW ---- without it Windows shows the busy cursor
         };
         RegisterClassEx(ref wc);

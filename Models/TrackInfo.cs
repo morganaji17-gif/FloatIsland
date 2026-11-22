@@ -1,7 +1,7 @@
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 
-namespace SonoIsland.Models;
+namespace FloatIsland.Models;
 
 public record TrackInfo
 {

@@ -1,6 +1,6 @@
 # Third-party notices
 
-Sono Island bundles or depends on the following third-party material. Each item
+Float Island bundles or depends on the following third-party material. Each item
 retains its own license and copyright.
 
 ## Plus Jakarta Sans

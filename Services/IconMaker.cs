@@ -1,7 +1,7 @@
 using System.IO;
 using SkiaSharp;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 /// <summary>
 /// Draws the application icon with Skia and writes a multi-size .ico (PNG entries, which

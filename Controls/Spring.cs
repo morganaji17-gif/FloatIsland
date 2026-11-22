@@ -1,4 +1,4 @@
-namespace SonoIsland.Controls;
+namespace FloatIsland.Controls;
 
 /// <summary>
 /// Critically-damped-ish spring integrator using Apple's "Designing Fluid

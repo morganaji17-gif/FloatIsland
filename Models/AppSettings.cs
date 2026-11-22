@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace SonoIsland.Models;
+namespace FloatIsland.Models;
 
 public sealed class AppSettings
 {

@@ -1,9 +1,9 @@
 using System.Windows.Forms;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 /// <summary>
-/// Manages the system tray icon and context menu for Sono Island.
+/// Manages the system tray icon and context menu for Float Island.
 /// </summary>
 public sealed class TrayIconService : IDisposable
 {
@@ -27,7 +27,7 @@ public sealed class TrayIconService : IDisposable
         _icon = new NotifyIcon
         {
             Icon = LoadAppIcon() ?? CreateDefaultIcon(),
-            Text = "Sono Island",
+            Text = "Float Island",
             Visible = true,
             ContextMenuStrip = _menu
         };

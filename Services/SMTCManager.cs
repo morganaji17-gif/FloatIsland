@@ -2,9 +2,9 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Windows.Media.Control;
-using SonoIsland.Models;
+using FloatIsland.Models;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 public sealed class SMTCManager : IDisposable
 {

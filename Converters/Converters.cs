@@ -3,7 +3,7 @@ using System.Windows.Data;
 using System.Windows;
 using System.Windows.Media;
 
-namespace SonoIsland.Converters;
+namespace FloatIsland.Converters;
 
 public class ProgressFillConverter : IMultiValueConverter
 {

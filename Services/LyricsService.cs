@@ -3,9 +3,9 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using SonoIsland.Models;
+using FloatIsland.Models;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 public enum LyricsKind { None, Synced, Plain, Instrumental }
 

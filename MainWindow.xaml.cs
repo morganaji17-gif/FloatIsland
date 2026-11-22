@@ -6,15 +6,15 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using SonoIsland.Controls;
-using SonoIsland.Models;
-using SonoIsland.Services;
+using FloatIsland.Controls;
+using FloatIsland.Models;
+using FloatIsland.Services;
 using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
 using FontFamily = System.Windows.Media.FontFamily;
 using Point = System.Windows.Point;
 
-namespace SonoIsland;
+namespace FloatIsland;
 
 public partial class MainWindow : Window
 {

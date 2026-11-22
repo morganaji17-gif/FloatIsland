@@ -13,8 +13,8 @@ thing is a few thousand lines of C#.
 
 ```powershell
 dotnet build -c Release -p:Platform=x64
-.\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\SonoIsland.exe          # WPF renderer
-.\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\SonoIsland.exe --skia   # Skia renderer
+.\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\FloatIsland.exe          # WPF renderer
+.\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\FloatIsland.exe --skia   # Skia renderer
 ```
 
 ## Before you open a pull request
@@ -22,8 +22,8 @@ dotnet build -c Release -p:Platform=x64
 Run both of these; CI runs the same commands:
 
 ```powershell
-.\bin\...\SonoIsland.exe --selftest     # pure-logic assertions, exits non-zero on failure
-.\bin\...\SonoIsland.exe --skia-shot    # renders every surface to PNG in .\shots\
+.\bin\...\FloatIsland.exe --selftest     # pure-logic assertions, exits non-zero on failure
+.\bin\...\FloatIsland.exe --skia-shot    # renders every surface to PNG in .\shots\
 ```
 
 `--skia-shot` is the render smoke test: it draws each island surface offscreen and

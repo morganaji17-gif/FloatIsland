@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 /// <summary>
 /// Core Audio access for the volume/output surface: the current default render endpoint's

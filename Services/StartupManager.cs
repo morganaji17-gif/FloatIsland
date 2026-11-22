@@ -1,11 +1,11 @@
 using Microsoft.Win32;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 public sealed class StartupManager
 {
     private const string RunKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
-    private const string AppName = "SonoIsland";
+    private const string AppName = "FloatIsland";
     private readonly string _exePath = Environment.ProcessPath ?? "";
 
     public bool IsEnabled

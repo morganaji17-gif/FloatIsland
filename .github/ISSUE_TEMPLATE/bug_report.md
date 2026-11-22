@@ -23,7 +23,7 @@ labels: bug
 
 **Diagnostics**
 
-The app logs to `%APPDATA%\SonoIsland\Logs\sonoisland_YYYYMMDD.log`.
+The app logs to `%APPDATA%\FloatIsland\Logs\floatisland_YYYYMMDD.log`.
 Paste the relevant lines (they include the measured geometry).
 
 ```

@@ -1,9 +1,9 @@
 using System.Windows;
 using System.IO;
-using SonoIsland.Models;
-using SonoIsland.Services;
+using FloatIsland.Models;
+using FloatIsland.Services;
 
-namespace SonoIsland;
+namespace FloatIsland;
 
 public partial class SettingsWindow : Window
 {

@@ -2,13 +2,13 @@ using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Windows.Media.Imaging;
-using SonoIsland.Models;
+using FloatIsland.Models;
 using Windowish = global::Windows.Media.Control;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 /// <summary>
-/// Command-line diagnostics used to validate Sono Island against a real Spotify
+/// Command-line diagnostics used to validate Float Island against a real Spotify
 /// session. None of this runs in normal operation — it only activates when the
 /// executable is started with an explicit diagnostic argument. No audio is ever
 /// recorded; artwork is decoded exactly as the app decodes it.

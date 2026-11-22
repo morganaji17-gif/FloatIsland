@@ -4,7 +4,7 @@ using Windows.Storage.Streams;
 using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 public sealed class ArtworkCache : IDisposable
 {

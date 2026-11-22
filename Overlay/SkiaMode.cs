@@ -1,10 +1,10 @@
 using SkiaSharp;
-using SonoIsland.Models;
-using SonoIsland.Services;
+using FloatIsland.Models;
+using FloatIsland.Services;
 using System.IO;
 using Windows.Storage.Streams;
 
-namespace SonoIsland.Overlay;
+namespace FloatIsland.Overlay;
 
 /// <summary>
 /// The <c>--skia</c> overlay: a raw Win32 layered window drawn with Skia, plus the island
@@ -147,7 +147,7 @@ internal static class SkiaMode
 
         _window.Show();
         _window.StartTimer(TimerMs);
-        _window.EnableTray(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"), "Sono Island");
+        _window.EnableTray(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"), "Float Island");
         _window.OnTrayShow = () => { _forceShowUntil = Environment.TickCount64 + 5000; SetSurface(Surface.Collapsed); };
         _window.OnTrayExit = () => _window.Close();
         Log.Info("[skia] overlay running (skia path)");

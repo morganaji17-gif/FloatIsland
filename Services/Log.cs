@@ -1,6 +1,6 @@
 using System.IO;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 public static class Log
 {
@@ -12,11 +12,11 @@ public static class Log
     {
         LogDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "SonoIsland", "Logs");
+            "FloatIsland", "Logs");
         Directory.CreateDirectory(LogDir);
     }
 
-    private static string CurrentFile => Path.Combine(LogDir, $"sonoisland_{DateTime.Now:yyyyMMdd}.log");
+    private static string CurrentFile => Path.Combine(LogDir, $"floatisland_{DateTime.Now:yyyyMMdd}.log");
 
     private static void Write(string level, string message)
     {
@@ -30,7 +30,7 @@ public static class Log
                 if (File.Exists(file) && new FileInfo(file).Length > MaxLogBytes)
                 {
                     var backup = Path.Combine(LogDir,
-                        $"sonoisland_{DateTime.Now:yyyyMMdd}_{DateTime.Now:HHmmss}.old.log");
+                        $"floatisland_{DateTime.Now:yyyyMMdd}_{DateTime.Now:HHmmss}.old.log");
                     File.Move(file, backup);
                     PruneOldBackups();
                 }

@@ -1,4 +1,4 @@
-namespace SonoIsland.Models;
+namespace FloatIsland.Models;
 
 /// <summary>
 /// In-memory snapshot of the analysed Spotify audio. No audio is ever stored.

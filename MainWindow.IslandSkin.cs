@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
-using SonoIsland.Controls;
+using FloatIsland.Controls;
 using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
 using FontFamily = System.Windows.Media.FontFamily;
@@ -11,7 +11,7 @@ using Point = System.Windows.Point;
 using Application = System.Windows.Application;
 using Brushes = System.Windows.Media.Brushes;
 
-namespace SonoIsland;
+namespace FloatIsland;
 
 /// <summary>
 /// Island finishing touches:

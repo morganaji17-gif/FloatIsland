@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
-using SonoIsland.Models;
+using FloatIsland.Models;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 /// <summary>
 /// Dependency-free assertions over the pure logic (LRC parsing, Spotify session matching).

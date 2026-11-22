@@ -1,7 +1,7 @@
 using System.IO;
 using SkiaSharp;
 
-namespace SonoIsland.Overlay;
+namespace FloatIsland.Overlay;
 
 internal enum Surface { Collapsed, Music, Lyrics, Menu, Volume }
 internal enum IconKind { Prev, Next, Lyrics }
@@ -262,7 +262,7 @@ internal sealed class IslandRenderer : IDisposable
         {
             var m0 = brand.FontMetrics;
             float by = pad + header / 2f - (m0.Ascent + m0.Descent) / 2f;
-            c.DrawText("Sono Island", xl + pad + header + 8 * s, by, brand);
+            c.DrawText("Float Island", xl + pad + header + 8 * s, by, brand);
         }
 
         float rowsTop = pad + header + 4 * s;

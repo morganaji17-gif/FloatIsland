@@ -1,16 +1,16 @@
-﻿using System.IO;
+using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
-using SonoIsland.Services;
+using FloatIsland.Services;
 
-namespace SonoIsland;
+namespace FloatIsland;
 
 public partial class App : System.Windows.Application
 {
     private Mutex? _mutex;
     private bool _ownsMutex;
-    private const string MutexName = "SonoIsland_SingleInstance_v2";
+    private const string MutexName = "FloatIsland_SingleInstance_v2";
 
     private void OnStartup(object sender, StartupEventArgs e)
     {
@@ -54,7 +54,7 @@ public partial class App : System.Windows.Application
         _ownsMutex = createdNew;
         if (!createdNew) { Shutdown(0); return; }
 
-        Log.Info("=== Sono Island starting ===");
+        Log.Info("=== Float Island starting ===");
 
         // Self-test: pure-logic assertions, exits non-zero on failure (used by CI).
         if (e.Args.Contains("--selftest", StringComparer.Ordinal))
@@ -107,7 +107,7 @@ public partial class App : System.Windows.Application
 
     private void OnExit(object sender, ExitEventArgs e)
     {
-        Log.Info($"=== Sono Island exiting ({e.ApplicationExitCode}) ===");
+        Log.Info($"=== Float Island exiting ({e.ApplicationExitCode}) ===");
         if (_ownsMutex) { try { _mutex?.ReleaseMutex(); } catch { } }
         _mutex?.Dispose();
         _mutex = null;

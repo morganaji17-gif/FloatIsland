@@ -6,7 +6,7 @@ using Size = System.Windows.Size;
 using Pen = System.Windows.Media.Pen;
 using Color = System.Windows.Media.Color;
 
-namespace SonoIsland.Controls;
+namespace FloatIsland.Controls;
 
 /// <summary>
 /// The island silhouette: a flat-topped capsule that flares wider

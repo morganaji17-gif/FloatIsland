@@ -1,11 +1,11 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using SonoIsland.Models;
+using FloatIsland.Models;
 using Brush = System.Windows.Media.Brush;
 using Color = System.Windows.Media.Color;
 
-namespace SonoIsland.Controls;
+namespace FloatIsland.Controls;
 
 /// <summary>
 /// Thin audio-reactive bar display driven by <see cref="AudioLevels"/>.

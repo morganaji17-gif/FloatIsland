@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/logo.png" width="96" alt="Sono Island logo">
+  <img src="docs/logo.png" width="96" alt="Float Island logo">
 </p>
 
-# Sono Island
+# Float Island
 
 A dynamic-island style **top-edge overlay for Spotify on Windows 11**. It hangs from
 the top centre of the screen, shows the current lyric, and can render either as a WPF
@@ -10,7 +10,7 @@ window or as a raw Win32 layered window drawn with Skia.
 
 Spotify only. No other player's audio or metadata is picked up.
 
-![Sono Island](docs/demo.png)
+![Float Island](docs/demo.png)
 
 Collapsed pill, player, lyrics. More in [`docs/`](docs).
 
@@ -39,15 +39,15 @@ Collapsed pill, player, lyrics. More in [`docs/`](docs).
 
 ## Download
 
-Grab a zip from the **[latest release](https://github.com/USER/SonoIsland/releases/latest)**:
+Grab a zip from the **[latest release](https://github.com/USER/FloatIsland/releases/latest)**:
 
 | Asset | Size | Needs |
 |---|---|---|
-| `SonoIsland-win-x64.zip` | ~100 MB | nothing - **self-contained**, just unzip and run |
-| `SonoIsland-win-x64-fdd.zip` | ~2 MB | the .NET 10 Desktop Runtime |
+| `FloatIsland-win-x64.zip` | ~100 MB | nothing - **self-contained**, just unzip and run |
+| `FloatIsland-win-x64-fdd.zip` | ~2 MB | the .NET 10 Desktop Runtime |
 
-1. Unzip anywhere (e.g. `C:\Users\<you>\SonoIsland`).
-2. Run `SonoIsland.exe --skia` - or `SonoIsland.exe` for the WPF renderer.
+1. Unzip anywhere (e.g. `C:\Users\<you>\FloatIsland`).
+2. Run `FloatIsland.exe --skia` - or `FloatIsland.exe` for the WPF renderer.
 3. Optional, for Start Menu / Desktop shortcuts:
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\Shortcuts.ps1
@@ -67,18 +67,18 @@ No installer, no background service, no account. It only needs Spotify Desktop r
 **From a release build**
 
 ```powershell
-# unzip SonoIsland-win-x64.zip, then
-.\SonoIsland.exe --skia     # Skia renderer (recommended: lightest, smoothest)
-.\SonoIsland.exe            # WPF renderer
+# unzip FloatIsland-win-x64.zip, then
+.\FloatIsland.exe --skia     # Skia renderer (recommended: lightest, smoothest)
+.\FloatIsland.exe            # WPF renderer
 ```
 
 **From source**
 
 ```powershell
 git clone <repo>
-cd SonoIsland
+cd FloatIsland
 dotnet build -c Release -p:Platform=x64
-.\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\SonoIsland.exe --skia
+.\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\FloatIsland.exe --skia
 ```
 
 **Install as an app (Start Menu / Desktop shortcut)**
@@ -86,7 +86,7 @@ dotnet build -c Release -p:Platform=x64
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 # options: -Startup  (also add a Startup shortcut)
-#          -Dest "D:\Apps\SonoIsland"
+#          -Dest "D:\Apps\FloatIsland"
 ```
 
 ## Interaction
@@ -134,7 +134,7 @@ only for the full settings dialog and will be dropped in a future major.
 ## Architecture
 
 ```
-SonoIsland/
+FloatIsland/
   MainWindow.xaml / .cs        WPF notch window, state machine, animations
   MainWindow.IslandSkin.cs     album wash, karaoke sweep, marquee (WPF helpers)
   Controls/IslandShape.cs      flared capsule geometry
@@ -174,7 +174,7 @@ the pointer is on.
 
 ## Settings
 
-`%APPDATA%\SonoIsland\settings.json`
+`%APPDATA%\FloatIsland\settings.json`
 
 | Setting | Default | Notes |
 |---|---|---|
@@ -195,14 +195,14 @@ the pointer is on.
 The executable has inert diagnostic modes (nothing runs unless invoked):
 
 ```powershell
-SonoIsland.exe --selftest                    # pure-logic assertions; exits non-zero on failure
-SonoIsland.exe --skia-shot                   # render every surface to PNG in .\shots\ and log its geometry
-SonoIsland.exe --smtc-probe [seconds]        # list SMTC sessions + Spotify metadata
-SonoIsland.exe --smtc-cmd play|pause|next|prev|seek
-SonoIsland.exe --selftest-capture spotify|<pid> [s]
-SonoIsland.exe --art-probe [rounds] [gapSeconds]
-SonoIsland.exe --lyrics-probe [local]
-SonoIsland.exe --ui-probe [cycle] [stepSeconds]   # WPF renderer only: log window/notch geometry
+FloatIsland.exe --selftest                    # pure-logic assertions; exits non-zero on failure
+FloatIsland.exe --skia-shot                   # render every surface to PNG in .\shots\ and log its geometry
+FloatIsland.exe --smtc-probe [seconds]        # list SMTC sessions + Spotify metadata
+FloatIsland.exe --smtc-cmd play|pause|next|prev|seek
+FloatIsland.exe --selftest-capture spotify|<pid> [s]
+FloatIsland.exe --art-probe [rounds] [gapSeconds]
+FloatIsland.exe --lyrics-probe [local]
+FloatIsland.exe --ui-probe [cycle] [stepSeconds]   # WPF renderer only: log window/notch geometry
 ```
 
 `--selftest` and `--skia-shot` are what CI runs.
@@ -210,7 +210,7 @@ SonoIsland.exe --ui-probe [cycle] [stepSeconds]   # WPF renderer only: log windo
 Other developer utilities:
 
 ```powershell
-SonoIsland.exe --make-icon      # redraw Assets/app.ico from the Skia artwork
+FloatIsland.exe --make-icon      # redraw Assets/app.ico from the Skia artwork
 powershell -File .\tools\make-demo.ps1   # compose docs/demo.png from the render samples
 ```
 

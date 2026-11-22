@@ -1,8 +1,8 @@
 using System.IO;
 using System.Text.Json;
-using SonoIsland.Models;
+using FloatIsland.Models;
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 public sealed class SettingsManager
 {
@@ -13,7 +13,7 @@ public sealed class SettingsManager
 
     public SettingsManager()
     {
-        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "SonoIsland");
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FloatIsland");
         Directory.CreateDirectory(dir);
         _path = Path.Combine(dir, "settings.json");
         Current = Load();

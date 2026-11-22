@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using SonoIsland.Models;
+using FloatIsland.Models;
 
 #pragma warning disable CA1416 // process loopback is runtime-guarded
 
-namespace SonoIsland.Services;
+namespace FloatIsland.Services;
 
 /// <summary>
 /// Captures ONLY the audio rendered by the Spotify process tree using the Windows
