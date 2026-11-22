@@ -36,6 +36,7 @@ internal static class SkiaMode
     private static readonly AudioLevels Levels = new();
     private static ProcessLoopbackCapture? _capture;
     private static uint _capturePid;
+    private static SKImage? _logo;
 
     private static OverlayWindow _window = null!;
     private static IslandLayout _hit = new();
@@ -101,6 +102,13 @@ internal static class SkiaMode
 
         float s = (float)_window.Scale;
         _mw = _renderer.CollapsedWidthPx("", s); _mh = 36 * s; _mr = 18 * s; _mf = 16 * s;
+
+        try
+        {
+            var lp = Path.Combine(AppContext.BaseDirectory, "Assets", "logo.png");
+            if (File.Exists(lp)) _logo = SKImage.FromEncodedData(File.ReadAllBytes(lp));
+        }
+        catch (Exception ex) { Log.Warn("[skia] logo: " + ex.Message); }
 
         _window.OnFrame = Frame;
         _window.OnLeftClick = Click;
@@ -180,7 +188,7 @@ internal static class SkiaMode
             SetSurface(Surface.Collapsed);
 
         float s = (float)_window.Scale;
-        var f = new IslandFrame { Surface = _surface, MenuLabels = Menu, CatPhase = now / 1000f };
+        var f = new IslandFrame { Surface = _surface, MenuLabels = Menu, CatPhase = now / 1000f, Logo = _logo };
 
         lock (Gate)
         {
@@ -212,7 +220,7 @@ internal static class SkiaMode
                      : _surface == Surface.Music ? 432 * s
                      : _surface == Surface.Lyrics ? 576 * s
                      : _surface == Surface.Volume ? 236 * s : 316 * s;
-        float targetH = _surface == Surface.Collapsed ? 36 * s : _surface == Surface.Menu ? 152 * s : _surface == Surface.Volume ? 44 * s : 176 * s;
+        float targetH = _surface == Surface.Collapsed ? 36 * s : _surface == Surface.Menu ? 176 * s : _surface == Surface.Volume ? 44 * s : 176 * s;
         float targetR = _surface == Surface.Collapsed ? 18 * s : (_surface == Surface.Menu || _surface == Surface.Volume) ? 22 * s : 32 * s;
         float targetF = _surface == Surface.Collapsed || _surface == Surface.Volume ? 16 * s : 28 * s;
 
@@ -529,19 +537,26 @@ internal static class SkiaMode
     // ─────────────────────────────────────────── offline self-check (--skia-shot)
     public static void Shot()
     {
-        var fontDir = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");
-        using var r = new IslandRenderer(fontDir);
+        var fontDir = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");        using var r = new IslandRenderer(fontDir);
         var dir = Path.Combine(AppContext.BaseDirectory, "shots");
         Directory.CreateDirectory(dir);
         const float s = 1.25f;
 
         AudioOutput.Start();
+        SKImage? logo = null;
+        try
+        {
+            var lp = Path.Combine(AppContext.BaseDirectory, "Assets", "logo.png");
+            if (File.Exists(lp)) logo = SKImage.FromEncodedData(File.ReadAllBytes(lp));
+        }
+        catch { }
         Log.Info($"[shot] audio default='{AudioOutput.DeviceName}' vol={AudioOutput.Volume:F2} mute={AudioOutput.Muted} devices=[{string.Join(" | ", AudioOutput.ActiveDevices())}]");
 
         var lines = new List<string> { "It's been a long day", "without you my friend", "And I'll tell you all about it", "when I see you again", "We've come a long way" };
         var f = new IslandFrame
         {
             Title = "See You Again",
+            Logo = logo,
             Artist = "Tyler, The Creator",
             Line = "And I'll tell you all about it when I see you again",
             LyricLine = "And I'll tell you all about it",
@@ -652,7 +667,7 @@ internal static class SkiaMode
         f.Surface = surf;
         int w = (int)(wDip * s), h = (int)(hDip * s);
         float bodyW = surf switch { Surface.Collapsed => r.CollapsedWidthPx(f.Line, s), Surface.Music => 432 * s, Surface.Lyrics => 576 * s, Surface.Volume => 236 * s, _ => 316 * s };
-        float bodyH = surf == Surface.Collapsed ? 36 * s : surf == Surface.Menu ? 152 * s : surf == Surface.Volume ? 44 * s : 176 * s;
+        float bodyH = surf == Surface.Collapsed ? 36 * s : surf == Surface.Menu ? 176 * s : surf == Surface.Volume ? 44 * s : 176 * s;
         float rb = surf == Surface.Collapsed ? 18 * s : (surf == Surface.Menu || surf == Surface.Volume) ? 22 * s : 32 * s;
         float flare = (surf == Surface.Collapsed || surf == Surface.Volume) ? 16 * s : 28 * s;
 

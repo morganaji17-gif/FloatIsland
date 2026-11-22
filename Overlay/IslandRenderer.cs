@@ -14,6 +14,7 @@ internal sealed class IslandFrame
     public string Artist = "";
     public string LyricLine = "";
     public SKImage? Cover;
+    public SKImage? Logo;                 // brand mark, used when there is no artwork
     public bool Playing;
     public bool HasTrack;
     public double Progress;
@@ -246,19 +247,32 @@ internal sealed class IslandRenderer : IDisposable
     // ---- MENU (316x112)
     private void DrawMenu(SKCanvas c, int w, float s, IslandFrame f, IslandLayout hit)
     {
-        float bodyW = 316 * s, H = 152 * s;
+        float bodyW = 316 * s, H = 176 * s;
         float cx = w / 2f, xl = cx - bodyW / 2f, xr = cx + bodyW / 2f;
         hit.Collapse = new SKRect(xl, 0, xr, H);
 
         var labels = f.MenuLabels.Length > 0 ? f.MenuLabels : new[] { "Exit" };
         float pad = 8 * s;
-        float rowH = (H - 2 * pad) / labels.Length;
+        float header = 22 * s;
+
+        // brand header: logo + name
+        if (f.Logo != null)
+            c.DrawImage(f.Logo, new SKRect(xl + pad, pad, xl + pad + header, pad + header));
+        using (var brand = P(_bold, 12.5f * s, White))
+        {
+            var m0 = brand.FontMetrics;
+            float by = pad + header / 2f - (m0.Ascent + m0.Descent) / 2f;
+            c.DrawText("Sono Island", xl + pad + header + 8 * s, by, brand);
+        }
+
+        float rowsTop = pad + header + 4 * s;
+        float rowH = (H - rowsTop - pad) / labels.Length;
         hit.MenuRows = new SKRect[labels.Length];
 
         using var label = P(_semi, 13.5f * s, White);
         for (int i = 0; i < labels.Length; i++)
         {
-            float y = pad + i * rowH;
+            float y = rowsTop + i * rowH;
             var row = new SKRect(xl + pad, y, xr - pad, y + rowH);
             hit.MenuRows[i] = row;
 
@@ -481,8 +495,22 @@ internal sealed class IslandRenderer : IDisposable
             c.DrawImage(f.Cover, new SKRect(cx - r, cy - r, cx + r, cy + r));
             c.Restore();
         }
-        else using (var bg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x12) }) c.DrawCircle(cx, cy, r, bg);
+        else
+        {
+            using (var bg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x12) })
+                c.DrawCircle(cx, cy, r, bg);
+            DrawLogoInside(c, f.Logo, cx - r, cy - r, r * 2, 0.72f);
+        }
         c.DrawCircle(cx, cy, r, stroke);
+    }
+
+    /// <summary>Draws the brand mark centred in a box (used as the no-artwork placeholder).</summary>
+    private static void DrawLogoInside(SKCanvas c, SKImage? logo, float x, float y, float size, float fill)
+    {
+        if (logo == null) return;
+        float d = size * fill;
+        float cx = x + size / 2f, cy = y + size / 2f;
+        c.DrawImage(logo, new SKRect(cx - d / 2f, cy - d / 2f, cx + d / 2f, cy + d / 2f));
     }
 
     private void CoverRounded(SKCanvas c, IslandFrame f, float x, float y, float size, float r, float s)
@@ -495,6 +523,7 @@ internal sealed class IslandRenderer : IDisposable
             c.DrawImage(f.Cover, rect); c.Restore();
         }
         else using (var bg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x12) }) c.DrawRoundRect(rr, bg);
+        if (f.Cover == null) DrawLogoInside(c, f.Logo, x, y, size, 0.62f);
         using var stroke = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = s, Color = new SKColor(255, 255, 255, 0x22) };
         c.DrawRoundRect(rr, stroke);
     }

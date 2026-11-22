@@ -33,5 +33,6 @@
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
     <None Include="Assets\Fonts\*.ttf" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\logo.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
