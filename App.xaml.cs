@@ -78,6 +78,14 @@ public partial class App : System.Windows.Application
             Shutdown(0);
             return;
         }
+        if (e.Args.Contains("--skia-bench", StringComparer.Ordinal))
+        {
+            int ix = Array.IndexOf(e.Args, "--skia-bench");
+            int frames = ix >= 0 && ix + 1 < e.Args.Length && int.TryParse(e.Args[ix + 1], out var n) ? n : 600;
+            Overlay.SkiaMode.Bench(frames);
+            Shutdown(0);
+            return;
+        }
         if (e.Args.Contains("--skia", StringComparer.Ordinal))
         {
             Overlay.SkiaMode.Run();

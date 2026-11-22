@@ -18,8 +18,9 @@ internal sealed class OverlayWindow : IDisposable
     public IntPtr Bits { get; private set; }
     public double Scale { get; private set; } = 1.0;
 
-    /// <summary>Called on a timer tick: draw into <see cref="Bits"/> for this size/stride.</summary>
-    public Action? OnFrame;
+    /// <summary>Called on every timer tick. Return true when a new frame was drawn
+    /// (false skips the composited blit).</summary>
+    public Func<bool>? OnFrame;
     public Action<int, int>? OnLeftClick;
     public Action? OnRightClick;
     public Action<int, int>? OnMouseMove;
@@ -265,11 +266,22 @@ internal sealed class OverlayWindow : IDisposable
 
     public void StartTimer(uint ms)
     {
-        SetTimer(Handle, (IntPtr)1, ms, IntPtr.Zero);
+        SetFrameInterval(ms);
         // paint one frame immediately so the window is never blank
-        OnFrame?.Invoke();
-        Present();
+        if (OnFrame?.Invoke() == true) Present();
     }
+
+    /// <summary>0 stops the timer; otherwise the tick interval in ms. Hidden states use a
+    /// slow poll so the process is effectively idle instead of blitting 100+ times a second.</summary>
+    public void SetFrameInterval(uint ms)
+    {
+        if (ms == _frameMs) return;
+        _frameMs = ms;
+        KillTimer(Handle, (IntPtr)1);
+        if (ms > 0) SetTimer(Handle, (IntPtr)1, ms, IntPtr.Zero);
+    }
+
+    private uint _frameMs = uint.MaxValue;
 
     public void Close()
     {
@@ -299,8 +311,7 @@ internal sealed class OverlayWindow : IDisposable
             switch (msg)
             {
                 case WM_TIMER:
-                    self.OnFrame?.Invoke();
-                    self.Present();
+                    if (self.OnFrame?.Invoke() == true) self.Present();
                     return IntPtr.Zero;
                 case WM_LBUTTONDOWN:
                     self.OnLeftClick?.Invoke((short)(lParam.ToInt64() & 0xFFFF), (short)((lParam.ToInt64() >> 16) & 0xFFFF));
@@ -418,6 +429,7 @@ internal sealed class OverlayWindow : IDisposable
         public uint dwFlags;
     }
     [DllImport("user32.dll")] private static extern IntPtr SetTimer(IntPtr h, IntPtr id, uint elapse, IntPtr proc);
+    [DllImport("user32.dll")] private static extern bool KillTimer(IntPtr h, IntPtr id);
     [DllImport("user32.dll")] private static extern void PostQuitMessage(int code);
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr h);
     [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr h, IntPtr dc);

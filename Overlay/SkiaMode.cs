@@ -67,7 +67,7 @@ internal static class SkiaMode
     private static float _washAlpha;
     private static SKColor _washL, _washM, _washR;
 
-    private const uint TimerMs = 8;
+    private const uint TimerMs = 16;
     private const int WinW = 720, WinH = 240;
     private const int CollapseAfterMs = 1500;
     private const int VolumeHoldMs = 1600;
@@ -158,7 +158,7 @@ internal static class SkiaMode
     }
 
     // ────────────────────────────────────────────────────────────────────── frame
-    private static void Frame()
+    private static bool Frame()
     {
         long now = Environment.TickCount64;
         float dt = _lastTick == 0 ? 1f / 60f : Math.Clamp((now - _lastTick) / 1000f, 0.001f, 0.05f);
@@ -175,8 +175,9 @@ internal static class SkiaMode
                              : Math.Max(0f, _visAlpha - dt / 0.18f);
             if (!want && _visAlpha <= 0.001f) { _window.Hide(); _shown = false; }
         }
-        if (!_shown) return;
+        if (!_shown) { _window.SetFrameInterval(200); return false; }
         _visScale = 0.70f + 0.30f * _visAlpha;
+        _window.SetFrameInterval(TimerMs);
 
         // the volume surface auto-dismisses back to whatever was showing before
         if (_surface == Surface.Volume && now > _volumeUntil) SetSurface(_beforeMenu);
@@ -262,9 +263,10 @@ internal static class SkiaMode
         };
         var info = new SKImageInfo(_window.Width, _window.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         using var surface = SKSurface.Create(info, _window.Bits, _window.Stride);
-        if (surface == null) return;
+        if (surface == null) return false;
         _renderer.Render(surface.Canvas, _window.Width, _window.Height, s, f, _hit, morph);
         surface.Canvas.Flush();
+        return true;
     }
 
     private static void Step(float target, ref float v, ref float vel, float dt)
@@ -534,10 +536,62 @@ internal static class SkiaMode
         _index = idx;
     }
 
+    /// <summary>Times the renderer: <c>--skia-bench [frames]</c>. Reports ms per frame and
+    /// the implied share of one core at 60 fps, without needing Spotify.</summary>
+    public static void Bench(int frames)
+    {
+        var fontDir = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");
+        using var r = new IslandRenderer(fontDir);
+        var f = new IslandFrame
+        {
+            Title = "See You Again", Artist = "Tyler, The Creator",
+            Line = "And I'll tell you all about it",
+            LyricLine = "And I'll tell you all about it",
+            Lines = Enumerable.Range(0, 45).Select(i => "lyric line number " + i).ToList(),
+            LyricIndex = 20, HasLyrics = true, Playing = true, Progress = 0.42,
+            Elapsed = "01:12", Duration = "03:49", LyricsReveal = 1f, LineFade = 1f,
+            DotsActive = 1, Hover = 1,
+            MenuLabels = new[] { "Music", "Lyrics", "Output: Speakers", "Startup: Off", "Hide: On", "Collapse", "Exit" },
+        };
+        try
+        {
+            var lp = Path.Combine(AppContext.BaseDirectory, "Assets", "logo.png");
+            if (File.Exists(lp)) f.Logo = SKImage.FromEncodedData(File.ReadAllBytes(lp));
+        }
+        catch { }
+
+        int w = 900, h = 300;
+        var info = new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using var surface = SKSurface.Create(info);
+        var hit = new IslandLayout();
+
+        foreach (var surf in new[] { Surface.Collapsed, Surface.Music, Surface.Lyrics })
+        {
+            f.Surface = surf;
+            float bodyW = surf == Surface.Collapsed ? r.CollapsedWidthPx(f.Line, 1.25f) : surf == Surface.Music ? 540 : 720;
+            var morph = new IslandMorph { BodyW = bodyW, BodyH = surf == Surface.Collapsed ? 45 : 220, Radius = 32 * 1.25f, Flare = 28 * 1.25f, Alpha = 1f };
+
+            for (int i = 0; i < 40; i++) r.Render(surface.Canvas, w, h, 1.25f, f, hit, morph);   // warm up
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < frames; i++)
+            {
+                f.CatPhase = i * 0.016f;
+                f.Karaoke = (i % 60) / 60f;
+                r.Render(surface.Canvas, w, h, 1.25f, f, hit, morph);
+            }
+            sw.Stop();
+
+            double ms = sw.Elapsed.TotalMilliseconds / frames;
+            Log.Info($"[bench] {surf}: {ms:F3} ms/frame -> {ms * 60 / 10:F2}% of one core at 60 fps");
+        }
+    }
+
     // ─────────────────────────────────────────── offline self-check (--skia-shot)
     public static void Shot()
     {
-        var fontDir = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");        using var r = new IslandRenderer(fontDir);
+        var fontDir = Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts");
+        using var r = new IslandRenderer(fontDir);
         var dir = Path.Combine(AppContext.BaseDirectory, "shots");
         Directory.CreateDirectory(dir);
         const float s = 1.25f;

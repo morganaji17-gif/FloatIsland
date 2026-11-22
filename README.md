@@ -239,8 +239,23 @@ templates - fill in the repo URL and the zip SHA256). For a manual release, tag
 
 ## Performance
 
-Measured on the WPF renderer (Lenovo LOQ: Ryzen 7 7435HS, 12 GB RAM, 1536x864 @ 125%,
-.NET 10, Release x64):
+Measured on a Ryzen 7 7435HS (16 threads), .NET 10 Release x64, 125 % scaling.
+
+**Skia renderer (`--skia`)**
+
+| State | CPU | Notes |
+|---|---|---|
+| Hidden (paused / stopped) | **~0 %** of one core | the render timer drops to a 5 Hz poll and no frame is blitted |
+| Visible, playing | **~4 % of one core** (≈0.25 % of the whole CPU) | 60 fps, mascot + karaoke sweep animating |
+| Per frame, measured | 0.30 ms collapsed, 0.70 ms player, 0.62 ms lyrics | `--skia-bench` |
+
+Working set ~77-110 MB, private ~20-40 MB, 15-30 threads. The surface is a single
+900x300 bitmap pushed with `UpdateLayeredWindow` (≈1.1 MB per frame at 60 fps).
+
+The renderer caches its paints and gradient shaders; creating them per frame cost about
+2x more. `--skia-bench [frames]` reports the numbers above on your machine.
+
+**WPF renderer** (the legacy path)
 
 | Scenario | CPU | Working set |
 |---|---|---|
@@ -248,8 +263,8 @@ Measured on the WPF renderer (Lenovo LOQ: Ryzen 7 7435HS, 12 GB RAM, 1536x864 @ 
 | Playing - lyrics + capture | ~4-5 % of one core | ~170 MB |
 | Loopback capture + FFT alone (48 kHz) | 2.6-4.1 % of one core | - |
 
-The Skia path composites a bitmap instead of a WPF visual tree, so it is lighter; the
-window is also sized to the surface, not a fixed 660x260 overlay.
+Disk: the framework-dependent zip is ~2 MB, the self-contained one ~100 MB (the .NET
+runtime dominates).
 
 ## Known limitations
 

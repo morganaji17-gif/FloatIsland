@@ -83,14 +83,14 @@ internal sealed class IslandRenderer : IDisposable
 
     public float CollapsedWidthPx(string line, float s)
     {
-        using var p = P(_semi, 13 * s, White);
+        var p = P(_semi, 13 * s, White);
         return Math.Clamp(p.MeasureText(line ?? "") + 61 * s, 124 * s, 440 * s);
     }
 
     /// <summary>Fixed collapsed width when the mascot is shown (cover + gap + cat + padding).</summary>
     public float Measure(SKTypefaceKind kind, string text, float sizePx)
     {
-        using var p = P(kind == SKTypefaceKind.Bold ? _bold : kind == SKTypefaceKind.Medium ? _med : _semi, sizePx, White);
+        var p = P(kind == SKTypefaceKind.Bold ? _bold : kind == SKTypefaceKind.Medium ? _med : _semi, sizePx, White);
         return p.MeasureText(text ?? "");
     }
 
@@ -132,7 +132,7 @@ internal sealed class IslandRenderer : IDisposable
     // ---- collapsed (LINE)
     private void DrawCollapsed(SKCanvas c, int w, float s, IslandFrame f, IslandLayout hit)
     {
-        using var tp = P(_semi, 13 * s, White);
+        var tp = P(_semi, 13 * s, White);
         float bodyW = Math.Clamp(tp.MeasureText(f.Line) + 61 * s, 124 * s, 440 * s);
         float cx = w / 2f, xl = cx - bodyW / 2f, xr = cx + bodyW / 2f, ph = 36 * s;
 
@@ -164,8 +164,8 @@ internal sealed class IslandRenderer : IDisposable
         CoverRounded(c, f, left, ctop, 64 * s, 14 * s, s);
 
         float tx = left + (64 + 14) * s, tw = colW - (64 + 14 + 12) * s;
-        using (var title = P(_semi, 15 * s, White))
-        using (var artist = P(_med, 12.5f * s, Dim))
+        var title = P(_semi, 15 * s, White);
+        var artist = P(_med, 12.5f * s, Dim);
         {
             c.Save(); c.ClipRect(new SKRect(tx, ctop, tx + tw, ctop + 64 * s));
             if (f.MarqueeOffset < -0.5f)
@@ -182,7 +182,7 @@ internal sealed class IslandRenderer : IDisposable
 
         float py = ctop + 64 * s + 8 * s;
         float trackL = left + 44 * s, trackR = left + colW - 44 * s;
-        using (var sm = P(_med, 11.5f * s, Faint))
+        var sm = P(_med, 11.5f * s, Faint);
         {
             c.DrawText(f.Elapsed, left, py + 10 * s, sm);
             c.DrawText(f.Duration, trackR + 6 * s, py + 10 * s, sm);
@@ -220,7 +220,7 @@ internal sealed class IslandRenderer : IDisposable
         float lx = dx + 22 * s, lw = right - 18 * s - lx;
         c.Save();
         c.ClipRect(new SKRect(lx, ctop, lx + lw, bottom - pad));
-        using var lyStyle = P(_bold, 17 * s, White);
+        var lyStyle = P(_bold, 17 * s, White);
         float rowH = 30 * s, midY = ctop + (H - 2 * pad) / 2f;
         float slide = (1f - Math.Clamp(f.LyricsReveal, 0f, 1f)) * 14 * s;   // rows slide in from the right
         for (int i = 0; i < f.Lines.Count; i++)
@@ -258,7 +258,7 @@ internal sealed class IslandRenderer : IDisposable
         // brand header: logo + name
         if (f.Logo != null)
             c.DrawImage(f.Logo, new SKRect(xl + pad, pad, xl + pad + header, pad + header));
-        using (var brand = P(_bold, 12.5f * s, White))
+        var brand = P(_bold, 12.5f * s, White);
         {
             var m0 = brand.FontMetrics;
             float by = pad + header / 2f - (m0.Ascent + m0.Descent) / 2f;
@@ -269,7 +269,7 @@ internal sealed class IslandRenderer : IDisposable
         float rowH = (H - rowsTop - pad) / labels.Length;
         hit.MenuRows = new SKRect[labels.Length];
 
-        using var label = P(_semi, 13.5f * s, White);
+        var label = P(_semi, 13.5f * s, White);
         for (int i = 0; i < labels.Length; i++)
         {
             float y = rowsTop + i * rowH;
@@ -322,14 +322,26 @@ internal sealed class IslandRenderer : IDisposable
         float bx0 = ix + 26 * s, bx1 = xr - 64 * s;
         Progress(c, bx0, cy, bx1 - bx0, s, Math.Clamp(f.Volume, 0, 1));
 
-        using var pct = P(_semi, 12 * s, White);
+        var pct = P(_semi, 12 * s, White);
         string label = f.VolumeMuted ? "Mute" : $"{Math.Round(f.Volume * 100)}%";
         c.DrawText(label, bx1 + 12 * s, Baseline(pct, cy), pct);
     }
 
     // ---- primitives
-    private static SKPaint P(SKTypeface tf, float size, SKColor color) =>
-        new() { Typeface = tf, TextSize = size, IsAntialias = true, Color = color };
+    // Paints and the body shaders are cached: creating them per frame at 60 fps was the
+// single biggest CPU cost (thousands of native allocations per second).
+private readonly Dictionary<(int tf, int size, int color), SKPaint> _paintCache = new();
+private SKPaint? _bodyFill, _bodySheen, _bodyEdge;
+private (float w, float h, float top, int tint, float amt) _bodyKey;
+
+private SKPaint P(SKTypeface tf, float size, SKColor color)
+{
+    var key = (tf.GetHashCode(), (int)Math.Round(size * 4), color.GetHashCode());
+    if (_paintCache.TryGetValue(key, out var cached)) return cached;
+    var p = new SKPaint { Typeface = tf, TextSize = size, IsAntialias = true, Color = color };
+    _paintCache[key] = p;
+    return p;
+}
 
     private static SKColor Mix(SKColor a, SKColor b, float k) => new(
         (byte)Math.Round(a.Red + (b.Red - a.Red) * k),
@@ -351,20 +363,20 @@ internal sealed class IslandRenderer : IDisposable
         return cy - (m.Ascent + m.Descent) / 2f;
     }
 
-    private static void KaraokeText(SKCanvas c, string text, float x, float baseY, float karaoke, SKTypeface tf, float size, float maxW)
+    private void KaraokeText(SKCanvas c, string text, float x, float baseY, float karaoke, SKTypeface tf, float size, float maxW)
     {
         if (string.IsNullOrEmpty(text)) return;
-        using var probe = P(tf, size, White);
+        var probe = P(tf, size, White);
         string t = Clip(text, probe, maxW);
         float w = probe.MeasureText(t);
 
-        using (var dim = P(tf, size, Faint)) c.DrawText(t, x, baseY, dim);
+        var dim = P(tf, size, Faint); c.DrawText(t, x, baseY, dim);
 
         float reveal = Math.Clamp(karaoke, 0f, 1f) * w;
         if (reveal <= 0.5f) return;
         c.Save();
         c.ClipRect(new SKRect(x, baseY - size * 1.4f, x + reveal + 3f, baseY + size * 0.5f));
-        using var bright = P(tf, size, White);
+        var bright = P(tf, size, White);
         c.DrawText(t, x, baseY, bright);
         c.Restore();
     }
@@ -415,33 +427,43 @@ internal sealed class IslandRenderer : IDisposable
         while (a > 0.05f && Contrast(SKColors.White, cTop) < 4.5) { a -= 0.05f; cTop = Mix(GradTop, tint, a); }
         var cBottom = Mix(GradBottom, tint, a * 0.75f);
 
-        using (var fill = new SKPaint
+        var key = (w, h, top, cTop.GetHashCode() ^ cBottom.GetHashCode(), a);
+        if (_bodyFill == null || !key.Equals(_bodyKey))
         {
-            IsAntialias = true,
-            Shader = SKShader.CreateLinearGradient(new SKPoint(0, top), new SKPoint(0, top + h),
-                new[] { cTop, cBottom }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
-        })
-            c.DrawPath(path, fill);
+            _bodyKey = key;
+            _bodyFill?.Dispose();
+            _bodySheen?.Dispose();
+            _bodyEdge?.Dispose();
+
+            _bodyFill = new SKPaint
+            {
+                IsAntialias = true,
+                Shader = SKShader.CreateLinearGradient(new SKPoint(0, top), new SKPoint(0, top + h),
+                    new[] { cTop, cBottom }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
+            };
+            _bodySheen = new SKPaint
+            {
+                IsAntialias = true,
+                Shader = SKShader.CreateLinearGradient(new SKPoint(0, top), new SKPoint(0, top + h * 0.3f),
+                    new[] { new SKColor(255, 255, 255, 15), SKColors.Transparent }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
+            };
+            _bodyEdge = new SKPaint
+            {
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 2 * s,
+                Shader = SKShader.CreateLinearGradient(new SKPoint(0, top + h * 0.5f), new SKPoint(0, top + h),
+                    new[] { SKColors.Transparent, Edge }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
+            };
+        }
+
+        c.DrawPath(path, _bodyFill);
 
         c.Save(); c.ClipPath(path, SKClipOperation.Intersect, true);
-        using (var sheen = new SKPaint
-        {
-            IsAntialias = true,
-            Shader = SKShader.CreateLinearGradient(new SKPoint(0, top), new SKPoint(0, top + h * 0.3f),
-                new[] { new SKColor(255, 255, 255, 15), SKColors.Transparent }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
-        })
-            c.DrawRect(new SKRect(x0, top, x0 + w, top + h * 0.3f), sheen);
+        c.DrawRect(new SKRect(x0, top, x0 + w, top + h * 0.3f), _bodySheen);
         c.Restore();
 
-        using (var edge = new SKPaint
-        {
-            IsAntialias = true,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 2 * s,
-            Shader = SKShader.CreateLinearGradient(new SKPoint(0, top + h * 0.5f), new SKPoint(0, top + h),
-                new[] { SKColors.Transparent, Edge }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
-        })
-            c.DrawPath(path, edge);
+        c.DrawPath(path, _bodyEdge);
     }
 
     private static void Shadow(SKCanvas c, SKPath path, float s)
@@ -666,5 +688,10 @@ internal sealed class IslandRenderer : IDisposable
         c.DrawRoundRect(new SKRect(cx, y, cx + 4 * s, y + 4 * s), 2 * s, 2 * s, active == 1 ? on : off);
     }
 
-    public void Dispose() { _bold.Dispose(); _semi.Dispose(); _med.Dispose(); }
+    public void Dispose()
+    {
+        foreach (var p in _paintCache.Values) p.Dispose();
+        _bodyFill?.Dispose(); _bodySheen?.Dispose(); _bodyEdge?.Dispose();
+        _bold.Dispose(); _semi.Dispose(); _med.Dispose();
+    }
 }
