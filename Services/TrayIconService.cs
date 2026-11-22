@@ -50,7 +50,7 @@ public sealed class TrayIconService : IDisposable
     {
         try
         {
-            var path = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
+            var path = System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
             return System.IO.File.Exists(path) ? new System.Drawing.Icon(path) : null;
         }
         catch { return null; }

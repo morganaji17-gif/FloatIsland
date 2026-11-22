@@ -147,7 +147,7 @@ internal static class SkiaMode
 
         _window.Show();
         _window.StartTimer(TimerMs);
-        _window.EnableTray(Path.Combine(AppContext.BaseDirectory, "app.ico"), "Sono Island");
+        _window.EnableTray(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"), "Sono Island");
         _window.OnTrayShow = () => { _forceShowUntil = Environment.TickCount64 + 5000; SetSurface(Surface.Collapsed); };
         _window.OnTrayExit = () => _window.Close();
         Log.Info("[skia] overlay running (skia path)");
