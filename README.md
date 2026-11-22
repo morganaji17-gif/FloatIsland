@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" width="96" alt="Sono Island logo">
+</p>
+
 # Sono Island
 
 A dynamic-island style **top-edge overlay for Spotify on Windows 11**. It hangs from
