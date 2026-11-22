@@ -26,7 +26,7 @@ public sealed class TrayIconService : IDisposable
 
         _icon = new NotifyIcon
         {
-            Icon = CreateDefaultIcon(),
+            Icon = LoadAppIcon() ?? CreateDefaultIcon(),
             Text = "Sono Island",
             Visible = true,
             ContextMenuStrip = _menu
@@ -43,6 +43,17 @@ public sealed class TrayIconService : IDisposable
     {
         if (_disposed) return;
         _icon.Text = text.Length > 63 ? text[..63] : text;
+    }
+
+    /// <summary>The application icon shipped next to the executable, if present.</summary>
+    private static System.Drawing.Icon? LoadAppIcon()
+    {
+        try
+        {
+            var path = System.IO.Path.Combine(AppContext.BaseDirectory, "app.ico");
+            return System.IO.File.Exists(path) ? new System.Drawing.Icon(path) : null;
+        }
+        catch { return null; }
     }
 
     private static System.Drawing.Icon CreateDefaultIcon()
