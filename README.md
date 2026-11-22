@@ -31,9 +31,30 @@ Spotify only. No other player's audio or metadata is picked up.
 - **App**: Spotify Desktop for Windows
 - **Runtime**: .NET 10 Desktop Runtime (x64) for the framework-dependent builds
 
-> **Downloads are unsigned.** Windows SmartScreen will warn about an unknown
-> publisher the first time you run the executable: *More info* -> *Run anyway*.
-> Build it yourself from source if you prefer.
+## Download
+
+Grab a zip from the **[latest release](https://github.com/USER/SonoIsland/releases/latest)**:
+
+| Asset | Size | Needs |
+|---|---|---|
+| `SonoIsland-win-x64.zip` | ~100 MB | nothing - **self-contained**, just unzip and run |
+| `SonoIsland-win-x64-fdd.zip` | ~2 MB | the .NET 10 Desktop Runtime |
+
+1. Unzip anywhere (e.g. `C:\Users\<you>\SonoIsland`).
+2. Run `SonoIsland.exe --skia` - or `SonoIsland.exe` for the WPF renderer.
+3. Optional, for Start Menu / Desktop shortcuts:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\Shortcuts.ps1
+   ```
+
+The release zip is **self-contained** (no .NET install required).
+
+> **SmartScreen**: the builds are unsigned, so Windows may warn the first time.
+> Choose *More info* -> *Run anyway*. If the file was blocked after unzipping, open the
+> zip's **Properties -> Unblock** before extracting, or right-click the exe ->
+> Properties -> Unblock.
+
+No installer, no background service, no account. It only needs Spotify Desktop running.
 
 ## Run it
 

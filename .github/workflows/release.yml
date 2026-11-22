@@ -18,21 +18,48 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # Framework-dependent build (small). Users need the .NET 10 Desktop Runtime.
-      - name: Publish
-        run: dotnet publish SonoIsland.csproj -c Release -p:Platform=x64 -r win-x64 --self-contained false -o dist
+      # Self-contained: no .NET runtime needed on the user's machine. Just unzip and run.
+      - name: Publish (self-contained)
+        run: dotnet publish SonoIsland.csproj -c Release -p:Platform=x64 -r win-x64 --self-contained true -o dist
+
+      # Tiny variant for people who already have the .NET 10 Desktop Runtime.
+      - name: Publish (framework-dependent)
+        run: dotnet publish SonoIsland.csproj -c Release -p:Platform=x64 -r win-x64 --self-contained false -o dist-fdd
+
+      - name: Add helper script + readme to the zips
+        run: |
+          Copy-Item Shortcuts.ps1 dist\
+          Copy-Item Shortcuts.ps1 dist-fdd\
+          $readme = @"
+          Sono Island - dynamic island for Spotify (Windows 11)
+
+          1. Run SonoIsland.exe            (WPF renderer)
+             Run SonoIsland.exe --skia     (Skia renderer, recommended)
+
+          2. Optional: create Start Menu / Desktop shortcuts
+             powershell -ExecutionPolicy Bypass -File .\Shortcuts.ps1
+
+          The app is hidden until Spotify is playing. Right-click the island for the menu.
+          Windows SmartScreen may warn because the build is unsigned: More info -> Run anyway.
+          "@
+          Set-Content dist\README.txt -Value $readme -Encoding UTF8
+          Set-Content dist-fdd\README.txt -Value $readme -Encoding UTF8
 
       - name: Zip
-        run: Compress-Archive -Path dist\* -DestinationPath SonoIsland-win-x64.zip
+        run: |
+          Compress-Archive -Path dist\* -DestinationPath SonoIsland-win-x64.zip
+          Compress-Archive -Path dist-fdd\* -DestinationPath SonoIsland-win-x64-fdd.zip
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: SonoIsland-win-x64.zip
+          files: |
+            SonoIsland-win-x64.zip
+            SonoIsland-win-x64-fdd.zip
 
       - uses: actions/upload-artifact@v4
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
           name: SonoIsland-win-x64
-          path: SonoIsland-win-x64.zip
+          path: SonoIsland-win-x64*.zip
