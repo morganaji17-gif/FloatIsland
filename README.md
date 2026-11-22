@@ -37,6 +37,23 @@ Collapsed pill, player, lyrics. More in [`docs/`](docs).
 - **App**: Spotify Desktop for Windows
 - **Runtime**: .NET 10 Desktop Runtime (x64) for the framework-dependent builds
 
+## Antivirus and SmartScreen
+
+Float Island is unsigned, and it does a few things that look suspicious to a heuristic
+engine (it overlays the desktop, captures **Spotify's own** audio to drive the
+visualiser, and can add itself to autostart if you ask it to). Behaviour-based AV
+products - Trend Micro, Kaspersky, Avast - and SmartScreen may therefore block or warn
+about it. It is a **false positive**; see [SECURITY.md](SECURITY.md) for exactly what
+the app does and does not do.
+
+- Verify a download against the `SHA256SUMS.txt` on the release page:
+  `Get-FileHash FloatIsland-win-x64.zip -Algorithm SHA256`
+- Or build it yourself from source.
+- Or whitelist the folder in your AV product.
+
+The permanent fix is code signing; signed binaries carry reputation and stop being
+flagged.
+
 ## Download
 
 Grab a zip from the **[latest release](https://github.com/USER/FloatIsland/releases/latest)**:

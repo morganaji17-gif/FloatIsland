@@ -49,6 +49,8 @@ jobs:
         run: |
           Compress-Archive -Path dist\* -DestinationPath FloatIsland-win-x64.zip
           Compress-Archive -Path dist-fdd\* -DestinationPath FloatIsland-win-x64-fdd.zip
+          Get-FileHash FloatIsland-win-x64.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  FloatIsland-win-x64.zip" } | Set-Content SHA256SUMS.txt
+          Get-FileHash FloatIsland-win-x64-fdd.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  FloatIsland-win-x64-fdd.zip" } | Add-Content SHA256SUMS.txt
 
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
@@ -57,9 +59,12 @@ jobs:
           files: |
             FloatIsland-win-x64.zip
             FloatIsland-win-x64-fdd.zip
+            SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         with:
           name: FloatIsland-win-x64
-          path: FloatIsland-win-x64*.zip
+          path: |
+            FloatIsland-win-x64*.zip
+            SHA256SUMS.txt
