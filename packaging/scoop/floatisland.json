@@ -1,18 +1,18 @@
 {
     "version": "2.1.0",
     "description": "Dynamic-island style top-edge overlay for Spotify on Windows 11.",
-    "homepage": "https://github.com/USER/FloatIsland",
+    "homepage": "https://github.com/morganaji17-gif/FloatIsland",
     "license": "MIT",
-    "url": "https://github.com/USER/FloatIsland/releases/download/v2.1.0/FloatIsland-win-x64.zip",
+    "url": "https://github.com/morganaji17-gif/FloatIsland/releases/download/v2.1.0/FloatIsland-win-x64.zip",
     "hash": "REPLACE_WITH_SHA256_OF_ZIP",
     "bin": "FloatIsland.exe",
     "shortcuts": [
         [ "FloatIsland.exe", "Float Island", "--skia" ]
     ],
     "checkver": {
-        "github": "https://github.com/USER/FloatIsland"
+        "github": "https://github.com/morganaji17-gif/FloatIsland"
     },
     "autoupdate": {
-        "url": "https://github.com/USER/FloatIsland/releases/download/v$version/FloatIsland-win-x64.zip"
+        "url": "https://github.com/morganaji17-gif/FloatIsland/releases/download/v$version/FloatIsland-win-x64.zip"
     }
 }

@@ -1,41 +1,76 @@
+<div align="center">
+  <a href="https://github.com/morganaji17-gif/FloatIsland">
+    <img src="docs/banner.png" alt="Float Island - a dynamic island for Spotify on Windows 11" width="100%">
+  </a>
+
+  <p>
+    <a href="https://github.com/morganaji17-gif/FloatIsland/actions/workflows/build.yml"><img src="https://github.com/morganaji17-gif/FloatIsland/actions/workflows/build.yml/badge.svg" alt="Build"></a>
+    <img src="https://img.shields.io/badge/Windows-11-0078D4?style=flat-square&logo=windows11&logoColor=white" alt="Windows 11">
+    <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square&logo=dotnet&logoColor=white" alt=".NET 10">
+    <img src="https://img.shields.io/badge/license-MIT-2ea44f?style=flat-square" alt="MIT license">
+    <img src="https://img.shields.io/badge/Spotify-only-1DB954?style=flat-square&logo=spotify&logoColor=white" alt="Spotify only">
+  </p>
+
+  <p><b>A dynamic-island style overlay for Spotify on Windows 11.</b><br>
+  Synced lyrics, album-tinted glass, audio-reactive details - and nothing rendered while paused.</p>
+</div>
+
 <p align="center">
-  <img src="docs/logo.png" width="96" alt="Float Island logo">
+  <img src="docs/demo.png" alt="Collapsed pill, player and lyrics surfaces" width="620">
 </p>
 
-# Float Island
-
-A dynamic-island style **top-edge overlay for Spotify on Windows 11**. It hangs from
-the top centre of the screen, shows the current lyric, and can render either as a WPF
-window or as a raw Win32 layered window drawn with Skia.
-
-Spotify only. No other player's audio or metadata is picked up.
-
-![Float Island](docs/demo.png)
-
-Collapsed pill, player, lyrics. More in [`docs/`](docs).
+Float Island hangs from the top centre of the screen and stays out of the way. It reads
+Spotify's media session through Windows SMTC, fetches synced lyrics from LRCLIB (or your
+own `.lrc` files), and paints a compact player that morphs between a one-line pill, a
+full player, a karaoke lyrics page and a quick-settings menu.
 
 ## Highlights
 
-- **Attached island** - a flat top edge that overhangs the body by a flare radius on
-  each side, rounded lower corners, flush against the top edge, centred on the display.
-  No title bar, no frame, no taskbar entry, never steals focus.
-- **Spotify-only** - everything else (Chrome, VLC, YouTube, ...) is ignored.
-- **Synced lyrics** - LRCLIB (free, no API key) and/or your own `.lrc` files, with a
-  karaoke-style reveal of the current line.
-- **Album tint** - the island background follows the dominant colour of the cover art.
-- **Real audio-reactive input** - Windows **process loopback capture** isolates
-  Spotify's rendered audio (not the microphone, not other apps).
-- **Media output switcher** - a volume surface driven by Core Audio, plus a menu entry
-  that cycles the default playback device.
-- **Tray icon** - left/right click for Show island / Exit. The island menu also holds the
-  quick settings (launch at startup, hide when stopped, output device).
-- **Event-driven** - no polling for metadata; nothing renders while paused.
+- **Attached, not floating in the middle** - a flat top edge, flared shoulders, rounded
+  lower corners, flush against the display. No title bar, no frame, no taskbar entry,
+  and it never steals focus.
+- **Spotify only** - Chrome, VLC, YouTube and everything else are ignored.
+- **Synced lyrics** - LRCLIB (free, no API key) and/or a local folder of `.lrc` files,
+  with a karaoke-style reveal of the current line.
+- **Album tint** - the body follows the dominant colour of the cover art, with a soft
+  coloured halo, a tinted progress bar and a matching menu accent.
+- **Real audio-reactive input** - Windows **process loopback capture** isolates Spotify's
+  rendered audio (not the microphone, not other apps) and drives the equaliser bars.
+- **A menu that feels native** - icon rows, inline on/off switches, the current output
+  device, and a version chip.
+- **Event-driven** - no metadata polling, and no frame is blitted while paused.
+
+## A closer look
+
+| Collapsed | Player | Lyrics |
+|:---:|:---:|:---:|
+| <img src="docs/collapsed-crop.png" alt="Collapsed pill" width="100%"> | <img src="docs/music-crop.png" alt="Expanded player" width="100%"> | <img src="docs/lyrics-crop.png" alt="Lyrics page" width="100%"> |
+
+| Menu | Volume | Album tint |
+|:---:|:---:|:---:|
+| <img src="docs/menu-crop.png" alt="Quick settings menu" width="100%"> | <img src="docs/volume-crop.png" alt="Volume surface" width="100%"> | <img src="docs/tint_green-crop.png" alt="Green album tint" width="100%"> |
+
+### Design notes
+
+The interface is drawn with Skia at 60 fps and animated with a spring (stiffness 240,
+damping 25). The window itself never resizes: the body morphs inside a fixed surface, so
+every transition - pill to player, player to lyrics, menu open - is one continuous shape.
+
+- **Type**: Plus Jakarta Sans (SemiBold / Medium / Bold), bundled under the SIL OFL.
+- **Surface**: a near-black vertical gradient, a hairline top highlight, a soft bottom
+  edge, and an album-coloured glow that is contrast-clamped so white text always reads.
+- **Artwork**: rounded cover with a drop shadow, an inner top light and a tinted halo.
+- **Controls**: a solid white play button, hover halos, a progress knob, and a
+  bottom-edge playback line on the collapsed pill.
+- **Lyrics**: the active line gets an album-tinted marker, the page reveals in a stagger,
+  and the album wash fades in behind the text.
+- **Menu**: grouped rows, real switches, a chevron for navigation and a `vX.Y` chip.
 
 ## Requirements
 
 - **OS**: Windows 11 (process loopback needs build 20348+; degrades gracefully otherwise)
 - **App**: Spotify Desktop for Windows
-- **Runtime**: .NET 10 Desktop Runtime (x64) for the framework-dependent builds
+- **Runtime**: .NET 10 Desktop Runtime (x64) for the framework-dependent build
 
 ## Antivirus and SmartScreen
 
@@ -56,7 +91,7 @@ flagged.
 
 ## Download
 
-Grab a zip from the **[latest release](https://github.com/USER/FloatIsland/releases/latest)**:
+Grab a zip from the **[latest release](https://github.com/morganaji17-gif/FloatIsland/releases/latest)**:
 
 | Asset | Size | Needs |
 |---|---|---|
@@ -92,7 +127,7 @@ No installer, no background service, no account. It only needs Spotify Desktop r
 **From source**
 
 ```powershell
-git clone <repo>
+git clone https://github.com/morganaji17-gif/FloatIsland.git
 cd FloatIsland
 dotnet build -c Release -p:Platform=x64
 .\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\FloatIsland.exe --skia
@@ -110,15 +145,16 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 | State | Surface | Size | How to reach it | What you get |
 |-------|---------|------|-----------------|--------------|
-| Collapsed | LINE | 124-440 x 36 | paused **or** playing | cover + one line: the current lyric, or `title - artist` when there is none |
+| Collapsed | LINE | 136-452 x 36 | paused **or** playing | cover + one line: the current lyric, or `title - artist` when there is none; EQ bars and a bottom-edge progress line |
 | Expanded | MUSIC | 432 x 176 | click the island | cover, title, artist, current lyric, seek, prev / play / next, lyric toggle, mascot |
 | Expanded | LYRICS | 576 x 176 | click the lyric toggle | two columns: cover/title/seek/controls left, divider, scrolling lyrics right |
-| Menu | MENU | 316 x 152 | right-click the island, or the tray icon | Music / Lyrics / Output: <device> / Launch at startup: on-off / Hide when stopped: on-off / Collapse / Exit |
+| Menu | MENU | 316 x 216 | right-click the island, or the tray icon | Music / Lyrics / Output: `<device>` / Launch at startup / Hide when stopped / Collapse / Exit |
 | Volume | VOLUME | 236 x 44 | change the system volume | speaker icon, level bar, percentage; auto-dismisses after 1.6 s |
 
 - The expanded panel collapses again ~1.5 s after the pointer leaves.
 - The island is hidden while playback is not running, and fades out rather than
   disappearing instantly.
+- The menu switches are the settings themselves - click a row to toggle it in place.
 
 ## Lyrics
 
@@ -175,7 +211,8 @@ FloatIsland/
   Assets/app.ico               application icon (generated by --make-icon)
   packaging/                   Scoop + winget manifests
   tools/make-demo.ps1          builds docs/demo.png from the render samples
-  docs/                        screenshots used by this README
+  tools/make-banner.ps1        builds docs/banner.png for the README
+  docs/                        screenshots and banner used by this README
   install.ps1                  publish + create shortcuts (from source)
   Shortcuts.ps1                create shortcuts next to a release build
   app.manifest                 per-monitor-v2 DPI, Windows 11
@@ -184,7 +221,7 @@ FloatIsland/
 ### Island state (Skia path)
 
 `SkiaMode` owns a small state machine over the surfaces above. Geometry is animated
-with a spring (stiffness 240, damping 25) at ~120 Hz; the window is a fixed size and
+with a spring (stiffness 240, damping 25) at ~60 Hz; the window is a fixed size and
 the body morphs inside it, so nothing resizes per frame. Input is hit-tested against
 the rectangles the renderer reports while drawing, and the window follows the monitor
 the pointer is on.
@@ -214,6 +251,7 @@ The executable has inert diagnostic modes (nothing runs unless invoked):
 ```powershell
 FloatIsland.exe --selftest                    # pure-logic assertions; exits non-zero on failure
 FloatIsland.exe --skia-shot                   # render every surface to PNG in .\shots\ and log its geometry
+FloatIsland.exe --skia-bench [frames]         # per-frame render cost for collapsed / player / lyrics
 FloatIsland.exe --smtc-probe [seconds]        # list SMTC sessions + Spotify metadata
 FloatIsland.exe --smtc-cmd play|pause|next|prev|seek
 FloatIsland.exe --selftest-capture spotify|<pid> [s]
@@ -227,15 +265,16 @@ FloatIsland.exe --ui-probe [cycle] [stepSeconds]   # WPF renderer only: log wind
 Other developer utilities:
 
 ```powershell
-FloatIsland.exe --make-icon      # redraw Assets/app.ico from the Skia artwork
-powershell -File .\tools\make-demo.ps1   # compose docs/demo.png from the render samples
+FloatIsland.exe --make-icon                     # redraw Assets/app.ico from the Skia artwork
+powershell -File .\tools\make-demo.ps1          # compose docs/demo.png + tight crops
+powershell -File .\tools\make-banner.ps1        # compose docs/banner.png
 ```
 
 ## Packaging
 
 Manifests for package managers live in [`packaging/`](packaging) (Scoop + winget
-templates - fill in the repo URL and the zip SHA256). For a manual release, tag
-`vX.Y.Z` and the release workflow attaches the zips.
+templates - fill in the zip SHA256). For a manual release, tag `vX.Y.Z` and the release
+workflow attaches the zips.
 
 ## Performance
 
@@ -246,14 +285,14 @@ Measured on a Ryzen 7 7435HS (16 threads), .NET 10 Release x64, 125 % scaling.
 | State | CPU | Notes |
 |---|---|---|
 | Hidden (paused / stopped) | **~0 %** of one core | the render timer drops to a 5 Hz poll and no frame is blitted |
-| Visible, playing | **~4 % of one core** (≈0.25 % of the whole CPU) | 60 fps, mascot + karaoke sweep animating |
-| Per frame, measured | 0.30 ms collapsed, 0.70 ms player, 0.62 ms lyrics | `--skia-bench` |
+| Visible, playing | **~5 % of one core** (≈0.3 % of the whole CPU) | 60 fps, mascot + karaoke sweep + EQ animating |
+| Per frame, measured | 0.35 ms collapsed, 0.83 ms player, 0.87 ms lyrics | `--skia-bench` |
 
 Working set ~77-110 MB, private ~20-40 MB, 15-30 threads. The surface is a single
 900x300 bitmap pushed with `UpdateLayeredWindow` (≈1.1 MB per frame at 60 fps).
 
-The renderer caches its paints and gradient shaders; creating them per frame cost about
-2x more. `--skia-bench [frames]` reports the numbers above on your machine.
+The renderer caches its paints, gradient shaders and glows; creating them per frame cost
+about 2x more. `--skia-bench [frames]` reports the numbers above on your machine.
 
 **WPF renderer** (the legacy path)
 

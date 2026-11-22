@@ -204,6 +204,9 @@ internal static class SkiaMode
                 ? (string.IsNullOrWhiteSpace(_artist) ? _title : _title + " \u2014 " + _artist)
                 : f.LyricLine;
             if (_playing) _capture?.ReadSnapshot(Levels);
+            f.Bars = Levels.Bars;
+            f.AudioActive = _playing && Levels.Active;
+            f.Beat = Levels.Beat;
             f.Volume = _vol; f.VolumeMuted = _volMuted;
         }
 
@@ -221,8 +224,8 @@ internal static class SkiaMode
                      : _surface == Surface.Music ? 432 * s
                      : _surface == Surface.Lyrics ? 576 * s
                      : _surface == Surface.Volume ? 236 * s : 316 * s;
-        float targetH = _surface == Surface.Collapsed ? 36 * s : _surface == Surface.Menu ? 176 * s : _surface == Surface.Volume ? 44 * s : 176 * s;
-        float targetR = _surface == Surface.Collapsed ? 18 * s : (_surface == Surface.Menu || _surface == Surface.Volume) ? 22 * s : 32 * s;
+        float targetH = _surface == Surface.Collapsed ? 36 * s : _surface == Surface.Menu ? 216 * s : _surface == Surface.Volume ? 44 * s : 176 * s;
+        float targetR = _surface == Surface.Collapsed ? 18 * s : _surface == Surface.Menu ? 26 * s : _surface == Surface.Volume ? 22 * s : 32 * s;
         float targetF = _surface == Surface.Collapsed || _surface == Surface.Volume ? 16 * s : 28 * s;
 
         Step(targetW, ref _mw, ref _vw, dt);
@@ -607,10 +610,12 @@ internal static class SkiaMode
         Log.Info($"[shot] audio default='{AudioOutput.DeviceName}' vol={AudioOutput.Volume:F2} mute={AudioOutput.Muted} devices=[{string.Join(" | ", AudioOutput.ActiveDevices())}]");
 
         var lines = new List<string> { "It's been a long day", "without you my friend", "And I'll tell you all about it", "when I see you again", "We've come a long way" };
+        using var demoCover = MakeDemoCover();
         var f = new IslandFrame
         {
             Title = "See You Again",
             Logo = logo,
+            Cover = demoCover,
             Artist = "Tyler, The Creator",
             Line = "And I'll tell you all about it when I see you again",
             LyricLine = "And I'll tell you all about it",
@@ -623,15 +628,23 @@ internal static class SkiaMode
             Duration = "03:49",
             Karaoke = 0.45f,
             DotsActive = 1,
+            Tint = new SKColor(0x2E, 0x7D, 0x32),
+            TintAmount = 0.45f,
             WashAlpha = 0.8f,
             WashLeft = new SKColor(0x1A, 0x2E, 0x24),
             WashMid = new SKColor(0x12, 0x1E, 0x18),
             WashRight = new SKColor(0x0C, 0x14, 0x10),
             Hover = 1,
-            MenuLabels = new[] { "Music", "Lyrics", "Output: Speakers", "Collapse", "Exit" },
+            MenuHover = 2,
+            Bars = new[] { 0.22f, 0.38f, 0.61f, 0.48f, 0.76f, 0.92f, 0.67f, 0.54f, 0.81f, 0.63f, 0.44f, 0.58f, 0.72f, 0.36f, 0.51f, 0.28f },
+            AudioActive = true,
+            Beat = 0.25f,
+            MenuLabels = new[] { "Music", "Lyrics", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Collapse", "Exit" },
         };
 
+        f.Karaoke = 1f;
         ShotOne(r, dir, 650, 120, s, Surface.Collapsed, "collapsed", f);
+        f.Karaoke = 0.72f;
         ShotOne(r, dir, WinW, WinH, s, Surface.Music, "music", f);
         ShotOne(r, dir, WinW, WinH, s, Surface.Lyrics, "lyrics", f);
         ShotOne(r, dir, WinW, WinH, s, Surface.Menu, "menu", f);
@@ -716,13 +729,65 @@ internal static class SkiaMode
         Log.Info($"[shot] tint {name} #{tint.Red:X2}{tint.Green:X2}{tint.Blue:X2} -> body avg #{rr / Math.Max(1, n):X2}{gg / Math.Max(1, n):X2}{bb / Math.Max(1, n):X2} (n={n}) bars avg #{(bn > 0 ? br / bn : 0):X2}{(bn > 0 ? bg / bn : 0):X2}{(bn > 0 ? bb2 / bn : 0):X2} (n={bn})");
     }
 
+    /// <summary>Synthetic cover art for the offline render samples (no third-party artwork).</summary>
+    private static SKImage MakeDemoCover()
+    {
+        const int n = 256;
+        var info = new SKImageInfo(n, n, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using var surface = SKSurface.Create(info);
+        var c = surface.Canvas;
+
+        using (var bg = new SKPaint
+        {
+            Shader = SKShader.CreateLinearGradient(new SKPoint(0, 0), new SKPoint(n, n),
+                new[] { new SKColor(0x0A, 0x1B, 0x12), new SKColor(0x1E, 0x4A, 0x2C), new SKColor(0x0B, 0x12, 0x0E) },
+                new[] { 0f, 0.55f, 1f }, SKShaderTileMode.Clamp)
+        })
+            c.DrawRect(0, 0, n, n, bg);
+
+        using (var sun = new SKPaint
+        {
+            IsAntialias = true,
+            Shader = SKShader.CreateRadialGradient(new SKPoint(176, 78), 96,
+                new[] { new SKColor(0xF4, 0xD9, 0x8A, 235), new SKColor(0xE8, 0xA9, 0x4B, 140), new SKColor(0xE8, 0xA9, 0x4B, 0) },
+                new[] { 0f, 0.45f, 1f }, SKShaderTileMode.Clamp)
+        })
+            c.DrawCircle(176, 78, 96, sun);
+
+        using (var hill = new SKPaint { IsAntialias = true, Color = new SKColor(0x0B, 0x1A, 0x12) })
+        using (var p = new SKPath())
+        {
+            p.MoveTo(0, 190);
+            p.CubicTo(50, 160, 96, 178, 140, 196);
+            p.CubicTo(180, 212, 220, 190, 256, 170);
+            p.LineTo(256, 256); p.LineTo(0, 256); p.Close();
+            c.DrawPath(p, hill);
+        }
+
+        using (var hill2 = new SKPaint { IsAntialias = true, Color = new SKColor(0x06, 0x10, 0x0B) })
+        using (var p = new SKPath())
+        {
+            p.MoveTo(0, 218);
+            p.CubicTo(60, 200, 110, 224, 160, 214);
+            p.CubicTo(200, 206, 230, 214, 256, 200);
+            p.LineTo(256, 256); p.LineTo(0, 256); p.Close();
+            c.DrawPath(p, hill2);
+        }
+
+        using (var star = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 90) })
+            for (int i = 0; i < 14; i++)
+                c.DrawCircle(20 + (i * 53) % 220, 18 + (i * 37) % 110, i % 3 == 0 ? 1.4f : 0.8f, star);
+
+        return surface.Snapshot();
+    }
+
     private static void ShotOne(IslandRenderer r, string dir, int wDip, int hDip, float s, Surface surf, string name, IslandFrame f)
     {
         f.Surface = surf;
         int w = (int)(wDip * s), h = (int)(hDip * s);
         float bodyW = surf switch { Surface.Collapsed => r.CollapsedWidthPx(f.Line, s), Surface.Music => 432 * s, Surface.Lyrics => 576 * s, Surface.Volume => 236 * s, _ => 316 * s };
-        float bodyH = surf == Surface.Collapsed ? 36 * s : surf == Surface.Menu ? 176 * s : surf == Surface.Volume ? 44 * s : 176 * s;
-        float rb = surf == Surface.Collapsed ? 18 * s : (surf == Surface.Menu || surf == Surface.Volume) ? 22 * s : 32 * s;
+        float bodyH = surf == Surface.Collapsed ? 36 * s : surf == Surface.Menu ? 216 * s : surf == Surface.Volume ? 44 * s : 176 * s;
+        float rb = surf == Surface.Collapsed ? 18 * s : surf == Surface.Menu ? 26 * s : surf == Surface.Volume ? 22 * s : 32 * s;
         float flare = (surf == Surface.Collapsed || surf == Surface.Volume) ? 16 * s : 28 * s;
 
         var info = new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);

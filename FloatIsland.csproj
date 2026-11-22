@@ -17,7 +17,7 @@
     <Authors>Float Island contributors</Authors>
     <Product>Float Island</Product>
     <Description>Dynamic-island style top-edge overlay for Spotify on Windows 11.</Description>
-    <RepositoryUrl>https://github.com/USER/FloatIsland</RepositoryUrl>
+    <RepositoryUrl>https://github.com/morganaji17-gif/FloatIsland</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <DebugType>none</DebugType>

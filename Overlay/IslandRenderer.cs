@@ -42,6 +42,11 @@ internal sealed class IslandFrame
     public int Hover = -1;                // 0 prev, 1 play, 2 next, 3 lyrics, 4 collapse
     public int MenuHover = -1;
     public string[] MenuLabels = { "Settings", "Hide island", "Exit" };
+
+    // Audio-reactive accents (shared 16-band snapshot; never mutated by the renderer)
+    public float[]? Bars;
+    public bool AudioActive;
+    public float Beat;
 }
 
 internal struct IslandMorph
@@ -84,7 +89,7 @@ internal sealed class IslandRenderer : IDisposable
     public float CollapsedWidthPx(string line, float s)
     {
         var p = P(_semi, 13 * s, White);
-        return Math.Clamp(p.MeasureText(line ?? "") + 61 * s, 124 * s, 440 * s);
+        return Math.Clamp(p.MeasureText(line ?? "") + 82 * s, 136 * s, 452 * s);
     }
 
     /// <summary>Fixed collapsed width when the mascot is shown (cover + gap + cat + padding).</summary>
@@ -133,16 +138,41 @@ internal sealed class IslandRenderer : IDisposable
     private void DrawCollapsed(SKCanvas c, int w, float s, IslandFrame f, IslandLayout hit)
     {
         var tp = P(_semi, 13 * s, White);
-        float bodyW = Math.Clamp(tp.MeasureText(f.Line) + 61 * s, 124 * s, 440 * s);
+        float bodyW = Math.Clamp(tp.MeasureText(f.Line) + 82 * s, 136 * s, 452 * s);
         float cx = w / 2f, xl = cx - bodyW / 2f, xr = cx + bodyW / 2f, ph = 36 * s;
 
-        CoverCircle(c, f, xl + 18 * s, ph / 2f, 12 * s, s);
+        if (f.Cover != null && f.TintAmount > 0.02f)
+            Glow(c, xl + 19 * s, ph / 2f, 23 * s, Accent(f.Tint), 0.22f * f.TintAmount, s);
 
-        float tx = xl + 40 * s, maxX = xr - 18 * s;
+        CoverCircle(c, f, xl + 19 * s, ph / 2f, 11.5f * s, s);
+
+        float tx = xl + 40 * s, maxX = xr - 40 * s;
         c.Save(); c.ClipRect(new SKRect(tx, 0, Math.Max(tx, maxX), ph));
         float baseY = Baseline(tp, ph / 2f);
         KaraokeText(c, f.Line, tx, baseY, f.Karaoke, _semi, 13 * s, maxX - tx);
         c.Restore();
+
+        if (f.Playing && f.Bars != null)
+            DrawBars(c, xr - 24 * s, ph / 2f, 13 * s, 13 * s, f.Bars, f.AudioActive, f.Beat, s,
+                new SKColor(255, 255, 255, 220));
+
+        // hairline playback progress tucked into the bottom edge
+        if (f.HasTrack && f.Progress > 0.001)
+        {
+            float px0 = xl + 13 * s, px1 = xr - 13 * s, py = ph - 1.7f * s;
+            using var bg = new SKPaint
+            {
+                IsAntialias = true, Color = new SKColor(255, 255, 255, 0x24),
+                StrokeWidth = 1.3f * s, StrokeCap = SKStrokeCap.Round
+            };
+            c.DrawLine(px0, py, px1, py, bg);
+            using var fg = new SKPaint
+            {
+                IsAntialias = true, Color = new SKColor(255, 255, 255, 215),
+                StrokeWidth = 1.3f * s, StrokeCap = SKStrokeCap.Round
+            };
+            c.DrawLine(px0, py, px0 + (px1 - px0) * Math.Clamp((float)f.Progress, 0f, 1f), py, fg);
+        }
 
         float fx = 16 * s;
         hit.Collapse = new SKRect(xl - fx, 0, xr + fx, ph);
@@ -161,24 +191,36 @@ internal sealed class IslandRenderer : IDisposable
         float left = xl + pad, right = xr - pad, ctop = top + pad;
         float colW = lyricsPage ? (right - left - 1 * s) / 2f : right - left;
 
-        CoverRounded(c, f, left, ctop, 64 * s, 14 * s, s);
+        if (f.TintAmount > 0.02f)
+        {
+            var accentGlow = Accent(f.Tint);
+            Glow(c, left + 32 * s, ctop + 32 * s, 78 * s, accentGlow, 0.28f * f.TintAmount, s);
+            if (lyricsPage) Glow(c, right - 90 * s, bottom * 0.45f, 150 * s, accentGlow, 0.10f * f.TintAmount, s);
+        }
+
+        CoverRounded(c, f, left, ctop, 64 * s, 16 * s, s);
 
         float tx = left + (64 + 14) * s, tw = colW - (64 + 14 + 12) * s;
-        var title = P(_semi, 15 * s, White);
+        var title = P(_semi, 16 * s, White);
         var artist = P(_med, 12.5f * s, Dim);
         {
             c.Save(); c.ClipRect(new SKRect(tx, ctop, tx + tw, ctop + 64 * s));
             if (f.MarqueeOffset < -0.5f)
                 title.MeasureText(f.Title);   // warm
-            c.DrawText(f.Title, tx + f.MarqueeOffset, ctop + 22 * s, title);
-            c.DrawText(Clip(f.Artist, artist, tw), tx, ctop + 42 * s, artist);
+            c.DrawText(f.Title, tx + f.MarqueeOffset, ctop + 23 * s, title);
+            c.DrawText(Clip(f.Artist, artist, tw), tx, ctop + 43 * s, artist);
             if (!lyricsPage && f.HasLyrics && !string.IsNullOrEmpty(f.LyricLine))
-                KaraokeText(c, f.LyricLine, tx, ctop + 60 * s, f.Karaoke, _semi, 12 * s, tw);
+                KaraokeText(c, f.LyricLine, tx, ctop + 61 * s, f.Karaoke, _semi, 12 * s, tw);
             c.Restore();
         }
 
         if (!lyricsPage)
+        {
+            if (f.Bars != null)
+                DrawBars(c, right - 57 * s, ctop + 26 * s, 14 * s, 15 * s, f.Bars, f.AudioActive, f.Beat, s,
+                    new SKColor(255, 255, 255, 190));
             DrawCat(c, right - 30 * s, ctop + 24 * s, 26 * s, f.CatPhase);
+        }
 
         float py = ctop + 64 * s + 8 * s;
         float trackL = left + 44 * s, trackR = left + colW - 44 * s;
@@ -187,23 +229,29 @@ internal sealed class IslandRenderer : IDisposable
             c.DrawText(f.Elapsed, left, py + 10 * s, sm);
             c.DrawText(f.Duration, trackR + 6 * s, py + 10 * s, sm);
         }
-        Progress(c, trackL, py + 8 * s, trackR - trackL, s, (float)f.Progress);
+        Progress(c, trackL, py + 8 * s, trackR - trackL, s, (float)f.Progress, Accent(f.Tint), f.TintAmount);
         hit.SeekTrack = new SKRect(trackL, py, trackR, py + 14 * s);
 
-        float cyy = py + 14 * s + 8 * s + 20 * s, cxm = left + colW / 2f;
-        Hover(c, f.Hover == 1, cxm, cyy, 20 * s, s);
-        Button(c, cxm, cyy, 40 * s, f.Playing, s);
-        hit.Play = new SKRect(cxm - 20 * s, cyy - 20 * s, cxm + 20 * s, cyy + 20 * s);
-        Hover(c, f.Hover == 0, cxm - 40 * s, cyy, 14 * s, s);
+        float cyy = py + 14 * s + 8 * s + 18 * s, cxm = left + colW / 2f;
+        Hover(c, f.Hover == 1, cxm, cyy, 22 * s, s);
+        Button(c, cxm, cyy, 44 * s, f.Playing, s, f.Hover == 1);
+        hit.Play = new SKRect(cxm - 22 * s, cyy - 22 * s, cxm + 22 * s, cyy + 22 * s);
+        Hover(c, f.Hover == 0, cxm - 40 * s, cyy, 15 * s, s);
         Icon(c, IconKind.Prev, cxm - 40 * s, cyy, 16 * s, White, s);
-        hit.Prev = new SKRect(cxm - 54 * s, cyy - 14 * s, cxm - 26 * s, cyy + 14 * s);
-        Hover(c, f.Hover == 2, cxm + 40 * s, cyy, 14 * s, s);
+        hit.Prev = new SKRect(cxm - 55 * s, cyy - 15 * s, cxm - 25 * s, cyy + 15 * s);
+        Hover(c, f.Hover == 2, cxm + 40 * s, cyy, 15 * s, s);
         Icon(c, IconKind.Next, cxm + 40 * s, cyy, 16 * s, White, s);
-        hit.Next = new SKRect(cxm + 26 * s, cyy - 14 * s, cxm + 54 * s, cyy + 14 * s);
+        hit.Next = new SKRect(cxm + 25 * s, cyy - 15 * s, cxm + 55 * s, cyy + 15 * s);
+
         float togx = left + colW - 14 * s;
-        Hover(c, f.Hover == 3, togx, cyy, 14 * s, s);
+        if (lyricsPage)
+        {
+            using var pill = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x14) };
+            c.DrawRoundRect(new SKRect(togx - 17 * s, cyy - 13 * s, togx + 17 * s, cyy + 13 * s), 13 * s, 13 * s, pill);
+        }
+        Hover(c, f.Hover == 3, togx, cyy, 15 * s, s);
         Icon(c, IconKind.Lyrics, togx, cyy, 16 * s, lyricsPage ? White : Dim, s);
-        hit.LyricsToggle = new SKRect(togx - 14 * s, cyy - 14 * s, togx + 14 * s, cyy + 14 * s);
+        hit.LyricsToggle = new SKRect(togx - 16 * s, cyy - 15 * s, togx + 16 * s, cyy + 15 * s);
 
         if (!lyricsPage)
         {
@@ -217,12 +265,13 @@ internal sealed class IslandRenderer : IDisposable
         using (var dv = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x17), StrokeWidth = 1 * s })
             c.DrawLine(dx, dy0, dx, drawn, dv);
 
-        float lx = dx + 22 * s, lw = right - 18 * s - lx;
+        float lx = dx + 24 * s, lw = right - 18 * s - lx;
         c.Save();
-        c.ClipRect(new SKRect(lx, ctop, lx + lw, bottom - pad));
-        var lyStyle = P(_bold, 17 * s, White);
-        float rowH = 30 * s, midY = ctop + (H - 2 * pad) / 2f;
+        c.ClipRect(new SKRect(lx - 14 * s, ctop, lx + lw, bottom - pad));
+        var lyStyle = P(_bold, 17.5f * s, White);
+        float rowH = 31 * s, midY = ctop + (H - 2 * pad) / 2f;
         float slide = (1f - Math.Clamp(f.LyricsReveal, 0f, 1f)) * 14 * s;   // rows slide in from the right
+        var accent = Accent(f.Tint);
         for (int i = 0; i < f.Lines.Count; i++)
         {
             int d = i - f.LyricIndex;
@@ -240,51 +289,117 @@ internal sealed class IslandRenderer : IDisposable
             byte a = (byte)(baseA * reveal);
             lyStyle.Color = new SKColor(255, 255, 255, a);
             c.DrawText(Clip(f.Lines[i], lyStyle, lw), lx + slide * (1 - reveal), y, lyStyle);
+
+            if (d == 0 && reveal > 0.5f)
+            {
+                byte aa = (byte)(200 * reveal * Math.Clamp(f.LineFade, 0f, 1f));
+                using var mark = new SKPaint
+                {
+                    IsAntialias = true, StrokeCap = SKStrokeCap.Round,
+                    Color = f.TintAmount > 0.05f ? accent.WithAlpha(aa) : new SKColor(255, 255, 255, aa)
+                };
+                c.DrawLine(lx - 10 * s, y - 11 * s, lx - 10 * s, y + 1 * s, mark);
+            }
         }
         c.Restore();
     }
 
-    // ---- MENU (316x112)
+    // ---- MENU (316x216)
     private void DrawMenu(SKCanvas c, int w, float s, IslandFrame f, IslandLayout hit)
     {
-        float bodyW = 316 * s, H = 176 * s;
+        float bodyW = 316 * s, H = 216 * s;
         float cx = w / 2f, xl = cx - bodyW / 2f, xr = cx + bodyW / 2f;
         hit.Collapse = new SKRect(xl, 0, xr, H);
 
         var labels = f.MenuLabels.Length > 0 ? f.MenuLabels : new[] { "Exit" };
-        float pad = 8 * s;
-        float header = 22 * s;
+        float pad = 10 * s;
+        float header = 30 * s;
 
-        // brand header: logo + name
+        // brand header: mark, wordmark, tagline, version
         if (f.Logo != null)
-            c.DrawImage(f.Logo, new SKRect(xl + pad, pad, xl + pad + header, pad + header));
-        var brand = P(_bold, 12.5f * s, White);
-        {
-            var m0 = brand.FontMetrics;
-            float by = pad + header / 2f - (m0.Ascent + m0.Descent) / 2f;
-            c.DrawText("Float Island", xl + pad + header + 8 * s, by, brand);
-        }
+            c.DrawImage(f.Logo, new SKRect(xl + pad + 2 * s, pad + 3 * s, xl + pad + 26 * s, pad + 27 * s));
+        var brand = P(_bold, 13 * s, White);
+        c.DrawText("Float Island", xl + pad + 34 * s, pad + 12 * s, brand);
+        var tag = P(_semi, 8.5f * s, new SKColor(255, 255, 255, 105));
+        c.DrawText("SPOTIFY ISLAND", xl + pad + 34 * s, pad + 24 * s, tag);
 
-        float rowsTop = pad + header + 4 * s;
-        float rowH = (H - rowsTop - pad) / labels.Length;
+        var ver = P(_semi, 9 * s, new SKColor(255, 255, 255, 145));
+        string verText = VersionLabel();
+        float verW = ver.MeasureText(verText);
+        var verRect = new SKRect(xr - pad - verW - 14 * s, pad + 6 * s, xr - pad, pad + 22 * s);
+        using (var vbg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x12) })
+            c.DrawRoundRect(verRect, 8 * s, 8 * s, vbg);
+        c.DrawText(verText, verRect.Left + 7 * s, Baseline(ver, verRect.MidY), ver);
+
+        float divY = pad + header;
+        using (var div = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x14), StrokeWidth = 1 * s })
+            c.DrawLine(xl + pad, divY, xr - pad, divY, div);
+
+        float rowsTop = divY + 8 * s;
+        float bottomPad = 10 * s;
+        float rowH = (H - rowsTop - bottomPad) / labels.Length;
         hit.MenuRows = new SKRect[labels.Length];
 
-        var label = P(_semi, 13.5f * s, White);
+        var label = P(_semi, 13 * s, new SKColor(255, 255, 255, 235));
+        var value = P(_med, 11.5f * s, Faint);
+        var accent = f.TintAmount > 0.05f ? Accent(f.Tint) : new SKColor(255, 255, 255, 205);
+
         for (int i = 0; i < labels.Length; i++)
         {
+            string raw = labels[i] ?? "";
+            string text = raw;
+            string? right = null;
+            bool toggle = false, on = false;
+            if (raw.StartsWith("Output: ", StringComparison.Ordinal)) { text = "Output"; right = raw[8..]; }
+            else if (raw.EndsWith(": On", StringComparison.Ordinal)) { text = raw[..^4]; toggle = true; on = true; }
+            else if (raw.EndsWith(": Off", StringComparison.Ordinal)) { text = raw[..^5]; toggle = true; }
+
             float y = rowsTop + i * rowH;
             var row = new SKRect(xl + pad, y, xr - pad, y + rowH);
             hit.MenuRows[i] = row;
 
-            if (f.MenuHover == i)
+            // a hairline separates the destructive/close group
+            if (i > 0 && text.StartsWith("Collapse", StringComparison.Ordinal))
+                using (var gd = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x12), StrokeWidth = 1 * s })
+                    c.DrawLine(row.Left + 6 * s, y, row.Right - 6 * s, y, gd);
+
+            bool hot = f.MenuHover == i;
+            if (hot)
             {
-                using var hl = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x1A) };
-                c.DrawRoundRect(new SKRoundRect(row, 6 * s), hl);
+                using var hl = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x10) };
+                c.DrawRoundRect(new SKRect(row.Left, y + 1 * s, row.Right, y + rowH - 1 * s), 8 * s, 8 * s, hl);
+                using var mark = new SKPaint { IsAntialias = true, Color = accent };
+                c.DrawRoundRect(new SKRect(row.Left + 3 * s, row.MidY - 7 * s, row.Left + 5 * s, row.MidY + 7 * s), 1 * s, 1 * s, mark);
             }
 
-            var m = label.FontMetrics;
-            float baseY = y + rowH / 2f - (m.Ascent + m.Descent) / 2f;
-            c.DrawText(labels[i], row.Left + 12 * s, baseY, label);
+            var iconColor = hot ? White : new SKColor(255, 255, 255, 175);
+            DrawMenuIcon(c, MenuIconFor(text), row.Left + 15 * s, row.MidY, 15 * s, iconColor, s);
+
+            label.Color = hot ? White : new SKColor(255, 255, 255, 235);
+            c.DrawText(text, row.Left + 32 * s, Baseline(label, row.MidY), label);
+
+            if (toggle)
+            {
+                Switch(c, row.Right - 36 * s, row.MidY - 8 * s, 30 * s, 16 * s, on, s, accent);
+            }
+            else if (right != null)
+            {
+                float maxW = row.Width * 0.42f;
+                string shown = Clip(right, value, maxW);
+                c.DrawText(shown, row.Right - 8 * s - value.MeasureText(shown), Baseline(value, row.MidY), value);
+            }
+            else if (text.StartsWith("Music", StringComparison.Ordinal) || text.StartsWith("Lyrics", StringComparison.Ordinal))
+            {
+                using var ch = new SKPaint
+                {
+                    IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f * s,
+                    StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round,
+                    Color = new SKColor(255, 255, 255, 110)
+                };
+                float chx = row.Right - 12 * s, chy = row.MidY;
+                c.DrawLine(chx - 3 * s, chy - 4 * s, chx + 1 * s, chy, ch);
+                c.DrawLine(chx + 1 * s, chy, chx - 3 * s, chy + 4 * s, ch);
+            }
         }
     }
 
@@ -296,43 +411,47 @@ internal sealed class IslandRenderer : IDisposable
         hit.Collapse = new SKRect(xl, 0, xr, H);
         float cy = H / 2f;
 
-        float ix = xl + 24 * s;
+        float ix = xl + 26 * s;
+        using (var badge = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x12) })
+            c.DrawCircle(ix, cy, 14 * s, badge);
+
         using var ink = new SKPaint { IsAntialias = true, Color = White };
         using (var p = new SKPath())
         {
-            p.MoveTo(ix - 8 * s, cy - 4 * s); p.LineTo(ix - 3 * s, cy - 4 * s); p.LineTo(ix + 3 * s, cy - 9 * s);
-            p.LineTo(ix + 3 * s, cy + 9 * s); p.LineTo(ix - 3 * s, cy + 4 * s); p.LineTo(ix - 8 * s, cy + 4 * s);
+            p.MoveTo(ix - 7 * s, cy - 4 * s); p.LineTo(ix - 3 * s, cy - 4 * s); p.LineTo(ix + 2 * s, cy - 8 * s);
+            p.LineTo(ix + 2 * s, cy + 8 * s); p.LineTo(ix - 3 * s, cy + 4 * s); p.LineTo(ix - 7 * s, cy + 4 * s);
             p.Close();
             c.DrawPath(p, ink);
         }
-        using (var arc = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.6f * s, StrokeCap = SKStrokeCap.Round, Color = White })
+        using (var arc = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f * s, StrokeCap = SKStrokeCap.Round, Color = White })
         {
             if (!f.VolumeMuted)
             {
-                c.DrawArc(new SKRect(ix + 1 * s, cy - 6 * s, ix + 15 * s, cy + 6 * s), -50, 100, false, arc);
-                c.DrawArc(new SKRect(ix + 1 * s, cy - 10 * s, ix + 22 * s, cy + 10 * s), -50, 100, false, arc);
+                c.DrawArc(new SKRect(ix + 0 * s, cy - 5 * s, ix + 12 * s, cy + 5 * s), -50, 100, false, arc);
+                c.DrawArc(new SKRect(ix + 0 * s, cy - 9 * s, ix + 19 * s, cy + 9 * s), -50, 100, false, arc);
             }
             else
             {
-                c.DrawLine(ix + 6 * s, cy - 5 * s, ix + 16 * s, cy + 5 * s, arc);
-                c.DrawLine(ix + 16 * s, cy - 5 * s, ix + 6 * s, cy + 5 * s, arc);
+                c.DrawLine(ix + 6 * s, cy - 4 * s, ix + 14 * s, cy + 4 * s, arc);
+                c.DrawLine(ix + 14 * s, cy - 4 * s, ix + 6 * s, cy + 4 * s, arc);
             }
         }
 
-        float bx0 = ix + 26 * s, bx1 = xr - 64 * s;
+        float bx0 = ix + 26 * s, bx1 = xr - 62 * s;
         Progress(c, bx0, cy, bx1 - bx0, s, Math.Clamp(f.Volume, 0, 1));
 
         var pct = P(_semi, 12 * s, White);
         string label = f.VolumeMuted ? "Mute" : $"{Math.Round(f.Volume * 100)}%";
-        c.DrawText(label, bx1 + 12 * s, Baseline(pct, cy), pct);
+        c.DrawText(label, bx1 + 14 * s, Baseline(pct, cy), pct);
     }
 
     // ---- primitives
     // Paints and the body shaders are cached: creating them per frame at 60 fps was the
 // single biggest CPU cost (thousands of native allocations per second).
 private readonly Dictionary<(int tf, int size, int color), SKPaint> _paintCache = new();
-private SKPaint? _bodyFill, _bodySheen, _bodyEdge;
+private SKPaint? _bodyFill, _bodySheen, _bodyEdge, _bodyTopEdge;
 private (float w, float h, float top, int tint, float amt) _bodyKey;
+private readonly Dictionary<(int x, int y, int size, int s), SKPaint> _coverSheenCache = new();
 
 private SKPaint P(SKTypeface tf, float size, SKColor color)
 {
@@ -427,6 +546,23 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
         while (a > 0.05f && Contrast(SKColors.White, cTop) < 4.5) { a -= 0.05f; cTop = Mix(GradTop, tint, a); }
         var cBottom = Mix(GradBottom, tint, a * 0.75f);
 
+        // a low, album-coloured halo makes the surface feel lit from behind
+        if (a > 0.04f)
+        {
+            var accent = Accent(tint);
+            for (int i = 0; i < 3; i++)
+            {
+                float wd = (12 + i * 12) * s;
+                byte al = (byte)((i == 0 ? 18 : i == 1 ? 11 : 7) * a);
+                using var gp = new SKPaint
+                {
+                    IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = wd,
+                    Color = accent.WithAlpha(al)
+                };
+                c.DrawPath(path, gp);
+            }
+        }
+
         var key = (w, h, top, cTop.GetHashCode() ^ cBottom.GetHashCode(), a);
         if (_bodyFill == null || !key.Equals(_bodyKey))
         {
@@ -434,18 +570,19 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
             _bodyFill?.Dispose();
             _bodySheen?.Dispose();
             _bodyEdge?.Dispose();
+            _bodyTopEdge?.Dispose();
 
             _bodyFill = new SKPaint
             {
                 IsAntialias = true,
                 Shader = SKShader.CreateLinearGradient(new SKPoint(0, top), new SKPoint(0, top + h),
-                    new[] { cTop, cBottom }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
+                    new[] { cTop, Mix(cTop, cBottom, 0.55f), cBottom }, new[] { 0f, 0.55f, 1f }, SKShaderTileMode.Clamp)
             };
             _bodySheen = new SKPaint
             {
                 IsAntialias = true,
-                Shader = SKShader.CreateLinearGradient(new SKPoint(0, top), new SKPoint(0, top + h * 0.3f),
-                    new[] { new SKColor(255, 255, 255, 15), SKColors.Transparent }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
+                Shader = SKShader.CreateLinearGradient(new SKPoint(0, top), new SKPoint(0, top + h * 0.34f),
+                    new[] { new SKColor(255, 255, 255, 17), SKColors.Transparent }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
             };
             _bodyEdge = new SKPaint
             {
@@ -455,14 +592,23 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
                 Shader = SKShader.CreateLinearGradient(new SKPoint(0, top + h * 0.5f), new SKPoint(0, top + h),
                     new[] { SKColors.Transparent, Edge }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
             };
+            _bodyTopEdge = new SKPaint
+            {
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 1 * s,
+                Shader = SKShader.CreateLinearGradient(new SKPoint(0, top), new SKPoint(0, top + h * 0.5f),
+                    new[] { new SKColor(255, 255, 255, 64), SKColors.Transparent }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
+            };
         }
 
         c.DrawPath(path, _bodyFill);
 
         c.Save(); c.ClipPath(path, SKClipOperation.Intersect, true);
-        c.DrawRect(new SKRect(x0, top, x0 + w, top + h * 0.3f), _bodySheen);
+        c.DrawRect(new SKRect(x0, top, x0 + w, top + h * 0.34f), _bodySheen);
         c.Restore();
 
+        c.DrawPath(path, _bodyTopEdge);
         c.DrawPath(path, _bodyEdge);
     }
 
@@ -539,6 +685,11 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
     {
         var rect = new SKRect(x, y, x + size, y + size);
         using var rr = new SKRoundRect(rect, r);
+
+        // a soft drop shadow grounds the artwork against the body
+        using (var shadow = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 90) })
+            c.DrawRoundRect(new SKRect(x, y + 3 * s, x + size, y + size + 3 * s), r, r, shadow);
+
         if (f.Cover != null)
         {
             c.Save(); c.ClipRoundRect(rr, SKClipOperation.Intersect, true);
@@ -546,7 +697,22 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
         }
         else using (var bg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x12) }) c.DrawRoundRect(rr, bg);
         if (f.Cover == null) DrawLogoInside(c, f.Logo, x, y, size, 0.62f);
-        using var stroke = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = s, Color = new SKColor(255, 255, 255, 0x22) };
+
+        // inner light along the top edge, then a crisp hairline border
+        var sheenKey = ((int)Math.Round(x * 2), (int)Math.Round(y * 2), (int)Math.Round(size * 2), (int)Math.Round(s * 2));
+        if (!_coverSheenCache.TryGetValue(sheenKey, out var inner))
+        {
+            inner = new SKPaint
+            {
+                IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f * s,
+                Shader = SKShader.CreateLinearGradient(new SKPoint(0, y), new SKPoint(0, y + size * 0.5f),
+                    new[] { new SKColor(255, 255, 255, 70), SKColors.Transparent }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
+            };
+            _coverSheenCache[sheenKey] = inner;
+        }
+        c.DrawRoundRect(new SKRect(x + 0.75f * s, y + 0.75f * s, x + size - 0.75f * s, y + size - 0.75f * s), r, r, inner);
+
+        using var stroke = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = s, Color = new SKColor(255, 255, 255, 0x24) };
         c.DrawRoundRect(rr, stroke);
     }
 
@@ -614,12 +780,27 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
         }
     }
 
-    private static void Progress(SKCanvas c, float x, float y, float w, float s, float p)
+    private static void Progress(SKCanvas c, float x, float y, float w, float s, float p,
+        SKColor? accent = null, float accentAmt = 0f)
     {
-        using var bg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x33) };
-        c.DrawRoundRect(new SKRect(x, y - 1.5f * s, x + w, y + 1.5f * s), 1.5f * s, 1.5f * s, bg);
-        using var fg = new SKPaint { IsAntialias = true, Color = White };
-        c.DrawRoundRect(new SKRect(x, y - 1.5f * s, x + w * Math.Clamp(p, 0, 1), y + 1.5f * s), 1.5f * s, 1.5f * s, fg);
+        float h = 3 * s;
+        using var bg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x2E) };
+        c.DrawRoundRect(new SKRect(x, y - h / 2, x + w, y + h / 2), h / 2, h / 2, bg);
+
+        float pw = w * Math.Clamp(p, 0f, 1f);
+        if (pw < 0.5f) return;
+
+        var fill = accent != null && accentAmt > 0.03f
+            ? Mix(White, accent.Value, Math.Clamp(accentAmt, 0f, 1f) * 0.8f)
+            : new SKColor(245, 245, 248);
+        using var fg = new SKPaint { IsAntialias = true, Color = fill };
+        c.DrawRoundRect(new SKRect(x, y - h / 2, x + pw, y + h / 2), h / 2, h / 2, fg);
+
+        // knob, with a dark rim so it reads on light album tints too
+        using (var rim = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 70) })
+            c.DrawCircle(x + pw, y, 4.6f * s, rim);
+        using var knob = new SKPaint { IsAntialias = true, Color = White };
+        c.DrawCircle(x + pw, y, 3.6f * s, knob);
     }
 
     private static void Hover(SKCanvas c, bool on, float cx, float cy, float r, float s)
@@ -629,21 +810,31 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
         c.DrawCircle(cx, cy, r + 6 * s, p);
     }
 
-    private static void Button(SKCanvas c, float cx, float cy, float d, bool playing, float s)
+    private static void Button(SKCanvas c, float cx, float cy, float d, bool playing, float s, bool hover)
     {
-        using (var bg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x26) })
-            c.DrawCircle(cx, cy, d / 2f, bg);
-        using var ink = new SKPaint { IsAntialias = true, Color = White };
+        float r = d / 2f;
+
+        using (var shade = new SKPaint { IsAntialias = true, Color = new SKColor(0, 0, 0, 80) })
+            c.DrawCircle(cx, cy + 2 * s, r, shade);
+
+        if (hover)
+            using (var halo = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x1F) })
+                c.DrawCircle(cx, cy, r + 5 * s, halo);
+
+        using (var bg = new SKPaint { IsAntialias = true, Color = hover ? SKColors.White : new SKColor(242, 243, 247) })
+            c.DrawCircle(cx, cy, r, bg);
+
+        using var ink = new SKPaint { IsAntialias = true, Color = new SKColor(12, 13, 17) };
         if (playing)
         {
-            float bw = 4 * s, bh = 14 * s;
-            c.DrawRect(new SKRect(cx - 6 * s, cy - bh / 2, cx - 2 * s, cy + bh / 2), ink);
-            c.DrawRect(new SKRect(cx + 2 * s, cy - bh / 2, cx + 6 * s, cy + bh / 2), ink);
+            float bh = 15 * s, bw = 4 * s;
+            c.DrawRoundRect(new SKRect(cx - 6 * s, cy - bh / 2, cx - 6 * s + bw, cy + bh / 2), 1.4f * s, 1.4f * s, ink);
+            c.DrawRoundRect(new SKRect(cx + 2 * s, cy - bh / 2, cx + 2 * s + bw, cy + bh / 2), 1.4f * s, 1.4f * s, ink);
         }
         else
         {
             using var p = new SKPath();
-            p.MoveTo(cx - 4 * s, cy - 8 * s); p.LineTo(cx + 9 * s, cy); p.LineTo(cx - 4 * s, cy + 8 * s); p.Close();
+            p.MoveTo(cx - 4 * s, cy - 8.5f * s); p.LineTo(cx + 10 * s, cy); p.LineTo(cx - 4 * s, cy + 8.5f * s); p.Close();
             c.DrawPath(p, ink);
         }
     }
@@ -682,16 +873,213 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
 
     private static void Dots(SKCanvas c, float cx, float y, int active, float s)
     {
-        using var on = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 230) };
-        using var off = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 77) };
-        c.DrawRoundRect(new SKRect(cx - 18 * s, y, cx - 4 * s, y + 4 * s), 2 * s, 2 * s, active == 0 ? on : off);
-        c.DrawRoundRect(new SKRect(cx, y, cx + 4 * s, y + 4 * s), 2 * s, 2 * s, active == 1 ? on : off);
+        using var on = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 232) };
+        using var off = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 80) };
+        float mid = y + 2 * s;
+        if (active == 0)
+        {
+            c.DrawRoundRect(new SKRect(cx - 17 * s, y, cx - 3 * s, y + 4 * s), 2 * s, 2 * s, on);
+            c.DrawCircle(cx + 3 * s, mid, 2 * s, off);
+        }
+        else
+        {
+            c.DrawCircle(cx - 5 * s, mid, 2 * s, off);
+            c.DrawRoundRect(new SKRect(cx + 1 * s, y, cx + 15 * s, y + 4 * s), 2 * s, 2 * s, on);
+        }
+    }
+
+    // ---- finishing-touch primitives
+
+    /// <summary>Lifts a cover colour into a vivid, readable accent for small UI details.</summary>
+    private static SKColor Accent(SKColor c)
+    {
+        int max = Math.Max(c.Red, Math.Max(c.Green, c.Blue));
+        int min = Math.Min(c.Red, Math.Min(c.Green, c.Blue));
+        if (max < 60 || max - min < 20)
+            return new SKColor(0x9F, 0xB4, 0xFF);   // neutral / greyscale art -> cool accent
+
+        float k = Math.Max(1f, Math.Min(1.9f, 200f / max));
+        return new SKColor(
+            (byte)Math.Min(255, c.Red * k + 18),
+            (byte)Math.Min(255, c.Green * k + 18),
+            (byte)Math.Min(255, c.Blue * k + 18));
+    }
+
+    private readonly Dictionary<(int color, int alpha, int cx, int cy, int r), SKPaint> _glowCache = new();
+
+    private void Glow(SKCanvas c, float cx, float cy, float r, SKColor color, float alpha, float s)
+    {
+        byte a = (byte)(255 * Math.Clamp(alpha, 0f, 1f));
+        if (a == 0) return;
+
+        var key = (color.GetHashCode(), a, (int)Math.Round(cx * 2), (int)Math.Round(cy * 2), (int)Math.Round(r * 2));
+        if (!_glowCache.TryGetValue(key, out var p))
+        {
+            if (_glowCache.Count > 96)   // morph transitions can churn positions; keep the cache bounded
+            {
+                foreach (var old in _glowCache.Values) old.Dispose();
+                _glowCache.Clear();
+            }
+            p = new SKPaint
+            {
+                IsAntialias = true,
+                Shader = SKShader.CreateRadialGradient(new SKPoint(cx, cy), r,
+                    new[] { color.WithAlpha(a), color.WithAlpha(0) }, new[] { 0f, 1f }, SKShaderTileMode.Clamp)
+            };
+            _glowCache[key] = p;
+        }
+        c.DrawCircle(cx, cy, r, p);
+    }
+
+    private static void DrawBars(SKCanvas c, float cx, float cy, float w, float h,
+        float[] bars, bool active, float beat, float s, SKColor color)
+    {
+        const int n = 4;
+        if (bars.Length == 0) return;
+        float bw = 2.2f * s;
+        float gap = (w - n * bw) / (n - 1);
+        float boost = 1f + Math.Clamp(beat, 0f, 1f) * 0.18f;
+        float bottom = cy + h / 2f;
+
+        using var p = new SKPaint { IsAntialias = true, Color = color };
+        for (int i = 0; i < n; i++)
+        {
+            int idx = (int)((long)i * bars.Length / n);
+            float v = active
+                ? Math.Min(1f, Math.Max(0.06f, bars[idx]) * boost)
+                : 0.16f + (i % 2 == 0 ? 0.04f : 0f);
+            float bh = Math.Max(2f * s, Math.Min(1f, v) * h);
+            float x = cx - w / 2f + i * (bw + gap);
+            c.DrawRoundRect(new SKRect(x, bottom - bh, x + bw, bottom), bw / 2f, bw / 2f, p);
+        }
+    }
+
+    private static void Switch(SKCanvas c, float x, float y, float w, float h,
+        bool on, float s, SKColor accent)
+    {
+        using var bg = new SKPaint
+        {
+            IsAntialias = true,
+            Color = on ? accent.WithAlpha(225) : new SKColor(255, 255, 255, 0x24)
+        };
+        c.DrawRoundRect(new SKRect(x, y, x + w, y + h), h / 2f, h / 2f, bg);
+
+        float r = h / 2f - 2 * s;
+        float kx = on ? x + w - h / 2f : x + h / 2f;
+        using var knob = new SKPaint
+        {
+            IsAntialias = true,
+            Color = on ? new SKColor(10, 11, 14) : new SKColor(235, 235, 240)
+        };
+        c.DrawCircle(kx, y + h / 2f, r, knob);
+    }
+
+    private enum MenuIcon { None, Music, Lyrics, Output, Startup, Hide, Collapse, Exit }
+
+    private static MenuIcon MenuIconFor(string text)
+    {
+        if (text.StartsWith("Music", StringComparison.Ordinal)) return MenuIcon.Music;
+        if (text.StartsWith("Lyrics", StringComparison.Ordinal)) return MenuIcon.Lyrics;
+        if (text.StartsWith("Output", StringComparison.Ordinal)) return MenuIcon.Output;
+        if (text.StartsWith("Launch", StringComparison.Ordinal)) return MenuIcon.Startup;
+        if (text.StartsWith("Hide", StringComparison.Ordinal)) return MenuIcon.Hide;
+        if (text.StartsWith("Collapse", StringComparison.Ordinal)) return MenuIcon.Collapse;
+        if (text.StartsWith("Exit", StringComparison.Ordinal)) return MenuIcon.Exit;
+        return MenuIcon.None;
+    }
+
+    private static void DrawMenuIcon(SKCanvas c, MenuIcon kind, float cx, float cy, float size, SKColor color, float s)
+    {
+        using var stroke = new SKPaint
+        {
+            IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f * s,
+            StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round, Color = color
+        };
+        using var fill = new SKPaint { IsAntialias = true, Color = color };
+
+        switch (kind)
+        {
+            case MenuIcon.Music:
+                c.DrawCircle(cx - 3 * s, cy + 4 * s, 2.6f * s, fill);
+                c.DrawLine(cx - 0.4f * s, cy + 4 * s, cx - 0.4f * s, cy - 5 * s, stroke);
+                c.DrawLine(cx - 0.4f * s, cy - 5 * s, cx + 5 * s, cy - 6.5f * s, stroke);
+                c.DrawLine(cx + 5 * s, cy - 6.5f * s, cx + 5 * s, cy + 2.5f * s, stroke);
+                c.DrawCircle(cx + 2.6f * s, cy + 2.5f * s, 2.4f * s, fill);
+                break;
+
+            case MenuIcon.Lyrics:
+            {
+                var r = new SKRect(cx - size / 2f + 1 * s, cy - size / 2f + 3 * s,
+                                   cx + size / 2f - 1 * s, cy + size / 2f - 3 * s);
+                c.DrawRoundRect(r, 3 * s, 3 * s, stroke);
+                c.DrawLine(r.Left + 4 * s, cy - 2 * s, r.Right - 4 * s, cy - 2 * s, stroke);
+                c.DrawLine(r.Left + 4 * s, cy + 2 * s, r.Right - 7 * s, cy + 2 * s, stroke);
+                break;
+            }
+
+            case MenuIcon.Output:
+            {
+                using var p = new SKPath();
+                p.MoveTo(cx - 7 * s, cy - 2 * s); p.LineTo(cx - 3 * s, cy - 2 * s);
+                p.LineTo(cx + 2 * s, cy - 7 * s); p.LineTo(cx + 2 * s, cy + 7 * s);
+                p.LineTo(cx - 3 * s, cy + 2 * s); p.LineTo(cx - 7 * s, cy + 2 * s); p.Close();
+                c.DrawPath(p, fill);
+                c.DrawArc(new SKRect(cx + 0 * s, cy - 5 * s, cx + 12 * s, cy + 5 * s), -50, 100, false, stroke);
+                break;
+            }
+
+            case MenuIcon.Startup:
+            {
+                using var p = new SKPath();
+                p.MoveTo(cx + 1 * s, cy - 8 * s); p.LineTo(cx - 6 * s, cy + 1 * s);
+                p.LineTo(cx - 1 * s, cy + 1 * s); p.LineTo(cx - 2 * s, cy + 8 * s);
+                p.LineTo(cx + 6 * s, cy - 2 * s); p.LineTo(cx + 1 * s, cy - 2 * s); p.Close();
+                c.DrawPath(p, fill);
+                break;
+            }
+
+            case MenuIcon.Hide:
+            {
+                using var p = new SKPath();
+                p.MoveTo(cx - 8 * s, cy);
+                p.QuadTo(cx, cy - 8 * s, cx + 8 * s, cy);
+                p.QuadTo(cx, cy + 8 * s, cx - 8 * s, cy);
+                p.Close();
+                c.DrawPath(p, stroke);
+                c.DrawCircle(cx, cy, 2 * s, fill);
+                c.DrawLine(cx - 7 * s, cy + 7 * s, cx + 7 * s, cy - 7 * s, stroke);
+                break;
+            }
+
+            case MenuIcon.Collapse:
+                c.DrawLine(cx - 6 * s, cy + 2 * s, cx, cy - 4 * s, stroke);
+                c.DrawLine(cx, cy - 4 * s, cx + 6 * s, cy + 2 * s, stroke);
+                c.DrawLine(cx - 6 * s, cy + 7 * s, cx + 6 * s, cy + 7 * s, stroke);
+                break;
+
+            case MenuIcon.Exit:
+                c.DrawArc(new SKRect(cx - 6 * s, cy - 6 * s, cx + 6 * s, cy + 7 * s), -40, 260, false, stroke);
+                c.DrawLine(cx, cy - 8 * s, cx, cy, stroke);
+                break;
+
+            default:
+                c.DrawCircle(cx, cy, 1.6f * s, fill);
+                break;
+        }
+    }
+
+    private static string VersionLabel()
+    {
+        var v = typeof(IslandRenderer).Assembly.GetName().Version;
+        return v == null ? "v2.1" : $"v{v.Major}.{v.Minor}";
     }
 
     public void Dispose()
     {
         foreach (var p in _paintCache.Values) p.Dispose();
-        _bodyFill?.Dispose(); _bodySheen?.Dispose(); _bodyEdge?.Dispose();
+        foreach (var p in _glowCache.Values) p.Dispose();
+        foreach (var p in _coverSheenCache.Values) p.Dispose();
+        _bodyFill?.Dispose(); _bodySheen?.Dispose(); _bodyEdge?.Dispose(); _bodyTopEdge?.Dispose();
         _bold.Dispose(); _semi.Dispose(); _med.Dispose();
     }
 }

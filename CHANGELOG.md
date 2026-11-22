@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Visual pass over every Skia surface: album-tinted halo, glassy body highlight,
+  solid white transport button, progress knob, bottom-edge playback line, audio bars
+  on the collapsed pill and player, and a cleaner page indicator.
+- Rebuilt the quick-settings menu (316x216): grouped icon rows, inline on/off switches,
+  the active output device, chevrons and a version chip.
+- Lyrics page: album-tinted active-line marker, a soft wash glow and slightly larger type.
+- New `docs/banner.png` hero and tight screenshot crops; `tools/make-banner.ps1`.
+- `--skia-shot` now renders a synthetic cover (no third-party artwork) and a realistic
+  seven-row menu.
+
 ## 2.1.0
 
 - Added an experimental Skia renderer (`--skia`): a raw Win32 layered window drawn
