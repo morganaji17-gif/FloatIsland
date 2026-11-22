@@ -1,0 +1,27 @@
+# Winget manifest template. Fill USER + the SHA256 of SonoIsland-win-x64.zip, then submit
+# via https://github.com/microsoft/winget-pkgs (manifests/<first-letter>/<Publisher>/<Package>/<version>/).
+#   winget install SonoIsland
+PackageIdentifier: USER.SonoIsland
+PackageVersion: 2.1.0
+PackageLocale: en-US
+Publisher: USER
+PackageName: Sono Island
+License: MIT
+ShortDescription: Dynamic-island style top-edge overlay for Spotify on Windows 11.
+Moniker: sonoisland
+Tags:
+  - spotify
+  - lyrics
+  - island
+  - widget
+Installers:
+  - Architecture: x64
+    InstallerType: zip
+    InstallerUrl: https://github.com/USER/SonoIsland/releases/download/v2.1.0/SonoIsland-win-x64.zip
+    InstallerSha256: REPLACE_WITH_SHA256_OF_ZIP
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: SonoIsland.exe
+        PortableCommandAlias: sonoisland
+ManifestType: singleton
+ManifestVersion: 1.6.0

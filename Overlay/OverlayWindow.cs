@@ -24,6 +24,8 @@ internal sealed class OverlayWindow : IDisposable
     public Action? OnRightClick;
     public Action<int, int>? OnMouseMove;
     public Action? OnMouseLeave;
+    public Action? OnTrayShow;
+    public Action? OnTrayExit;
 
     private IntPtr _memDc, _dib, _oldBmp;
     private bool _disposed;
@@ -54,6 +56,77 @@ internal sealed class OverlayWindow : IDisposable
 
     public void Hide() => ShowWindow(Handle, 0);
     public void Show2() => ShowWindow(Handle, SW_SHOWNOACTIVATE);
+
+    // --------------------------------------------------------------------- tray
+    private const uint WM_TRAY = 0x8001;          // WM_APP + 1
+    private const uint NIM_ADD = 0, NIM_DELETE = 2, NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
+    private const uint IMAGE_ICON = 1, LR_LOADFROMFILE = 0x10, LR_DEFAULTSIZE = 0x40;
+    private const uint MF_STRING = 0, TPM_RIGHTBUTTON = 2, TPM_RETURNCMD = 0x100;
+
+    /// <summary>Adds a notification-area icon; left click shows the island, right click
+    /// pops a small menu (Show / Exit).</summary>
+    public void EnableTray(string iconPath, string tip)
+    {
+        IntPtr icon = LoadImage(IntPtr.Zero, iconPath, IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);
+        var data = new NOTIFYICONDATA
+        {
+            cbSize = Marshal.SizeOf<NOTIFYICONDATA>(),
+            hWnd = Handle,
+            uID = 1,
+            uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
+            uCallbackMessage = WM_TRAY,
+            hIcon = icon,
+            szTip = tip,
+        };
+        _trayAdded = Shell_NotifyIcon(NIM_ADD, ref data);
+        if (!_trayAdded) Log.Warn("tray: Shell_NotifyIcon failed");
+    }
+
+    public void RemoveTray()
+    {
+        if (!_trayAdded) return;
+        var data = new NOTIFYICONDATA { cbSize = Marshal.SizeOf<NOTIFYICONDATA>(), hWnd = Handle, uID = 1 };
+        Shell_NotifyIcon(NIM_DELETE, ref data);
+        _trayAdded = false;
+    }
+
+    private void ShowTrayMenu()
+    {
+        IntPtr menu = CreatePopupMenu();
+        AppendMenu(menu, MF_STRING, 1, "Show island");
+        AppendMenu(menu, MF_STRING, 2, "Exit");
+        GetCursorPos(out var pt);
+        SetForegroundWindow(Handle);
+        int cmd = TrackPopupMenu(menu, TPM_RIGHTBUTTON | TPM_RETURNCMD, pt.X, pt.Y, 0, Handle, IntPtr.Zero);
+        DestroyMenu(menu);
+
+        if (cmd == 1) OnTrayShow?.Invoke();
+        else if (cmd == 2) OnTrayExit?.Invoke();
+    }
+
+    private bool _trayAdded;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct NOTIFYICONDATA
+    {
+        public int cbSize;
+        public IntPtr hWnd;
+        public uint uID;
+        public uint uFlags;
+        public uint uCallbackMessage;
+        public IntPtr hIcon;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string szTip;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool Shell_NotifyIcon(uint message, ref NOTIFYICONDATA data);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr LoadImage(IntPtr instance, string name, uint type, int cx, int cy, uint load);
+    [DllImport("user32.dll")] private static extern IntPtr CreatePopupMenu();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool AppendMenu(IntPtr menu, uint flags, uint id, string text);
+    [DllImport("user32.dll")] private static extern bool DestroyMenu(IntPtr menu);
+    [DllImport("user32.dll")] private static extern int TrackPopupMenu(IntPtr menu, uint flags, int x, int y, int reserved, IntPtr hwnd, IntPtr rect);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
 
     private static readonly Dictionary<IntPtr, OverlayWindow> Live = new();
     private static WndProcDelegate? _proc; // keep alive
@@ -243,6 +316,10 @@ internal sealed class OverlayWindow : IDisposable
                 case WM_SETCURSOR:
                     SetCursor(LoadCursor(IntPtr.Zero, self.CursorKind == 1 ? 32649u : 32512u)); // IDC_HAND : IDC_ARROW
                     return new IntPtr(1);                                                        // TRUE ---- handled
+                case WM_TRAY:
+                    uint trayMsg = (uint)(lParam.ToInt64() & 0xFFFF);
+                    if (trayMsg == 0x0205 /*WM_RBUTTONUP*/ || trayMsg == 0x0202 /*WM_LBUTTONUP*/) self.ShowTrayMenu();
+                    return IntPtr.Zero;
                 case WM_RBUTTONUP:
                     self.OnRightClick?.Invoke();
                     return IntPtr.Zero;

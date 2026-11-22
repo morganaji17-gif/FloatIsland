@@ -1,4 +1,5 @@
-﻿using System.Threading;
+﻿using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
 using SonoIsland.Services;
@@ -59,6 +60,14 @@ public partial class App : System.Windows.Application
         if (e.Args.Contains("--selftest", StringComparer.Ordinal))
         {
             Shutdown(Services.SelfTest.Run());
+            return;
+        }
+
+        // Icon: redraw the multi-size .ico from the Skia artwork.
+        if (e.Args.Contains("--make-icon", StringComparer.Ordinal))
+        {
+            Services.IconMaker.MakeIcon(Path.Combine(AppContext.BaseDirectory, "app.ico"));
+            Shutdown(0);
             return;
         }
 

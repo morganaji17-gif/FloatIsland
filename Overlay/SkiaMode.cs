@@ -54,6 +54,7 @@ internal static class SkiaMode
     private static bool _mouseInside;
     private static bool _shown;
     private static float _visAlpha, _visScale = 1f;
+    private static long _forceShowUntil;
     private static long _leftAt;
     private static long _lastMonCheck;
     private static int _hover = -1, _menuHover = -1;
@@ -70,13 +71,28 @@ internal static class SkiaMode
     private const int CollapseAfterMs = 1500;
     private const int VolumeHoldMs = 1600;
 
-    private static readonly string[] Menu = new string[5];
+    private static readonly string[] Menu = new string[7];
     private static float _vol;
     private static bool _volMuted;
     private static long _volumeUntil;
 
+    private static readonly StartupManager Startup = new();
+
     private static string MenuOutput() =>
         string.IsNullOrWhiteSpace(AudioOutput.DeviceName) ? "Output" : "Output: " + AudioOutput.DeviceName;
+    private static string MenuStartup() => "Launch at startup: " + (Startup.IsEnabled ? "On" : "Off");
+    private static string MenuHide() => "Hide when stopped: " + (Settings.Current.HideWhenMusicStops ? "On" : "Off");
+
+    private static void RebuildMenu()
+    {
+        Menu[0] = "Music";
+        Menu[1] = "Lyrics";
+        Menu[2] = MenuOutput();
+        Menu[3] = MenuStartup();
+        Menu[4] = MenuHide();
+        Menu[5] = "Collapse";
+        Menu[6] = "Exit";
+    }
 
     public static void Run()
     {
@@ -97,6 +113,7 @@ internal static class SkiaMode
         Menu[2] = MenuOutput();
         Menu[3] = "Collapse";
         Menu[4] = "Exit";
+        RebuildMenu();
 
         AudioOutput.Start();
         AudioOutput.VolumeChanged += (v, m) =>
@@ -122,8 +139,12 @@ internal static class SkiaMode
 
         _window.Show();
         _window.StartTimer(TimerMs);
+        _window.EnableTray(Path.Combine(AppContext.BaseDirectory, "app.ico"), "Sono Island");
+        _window.OnTrayShow = () => { _forceShowUntil = Environment.TickCount64 + 5000; SetSurface(Surface.Collapsed); };
+        _window.OnTrayExit = () => _window.Close();
         Log.Info("[skia] overlay running (skia path)");
         OverlayWindow.RunLoop();
+        _window.RemoveTray();
         _capture?.Stop();
         Log.Info("[skia] overlay ended");
     }
@@ -138,12 +159,13 @@ internal static class SkiaMode
         TickIndex();
 
         // Show/hide with a fade + shrink (instant ShowWindow on start, animated on pause).
-        if (_playing && !_shown) { _shown = true; _visAlpha = 0f; _window.Show2(); }
+        bool want = _playing || (!Settings.Current.HideWhenMusicStops && _hasTrack) || now < _forceShowUntil;
+        if (want && !_shown) { _shown = true; _visAlpha = 0f; _window.Show2(); }
         if (_shown)
         {
-            _visAlpha = _playing ? Math.Min(1f, _visAlpha + dt / 0.22f)
-                                 : Math.Max(0f, _visAlpha - dt / 0.18f);
-            if (!_playing && _visAlpha <= 0.001f) { _window.Hide(); _shown = false; }
+            _visAlpha = want ? Math.Min(1f, _visAlpha + dt / 0.22f)
+                             : Math.Max(0f, _visAlpha - dt / 0.18f);
+            if (!want && _visAlpha <= 0.001f) { _window.Hide(); _shown = false; }
         }
         if (!_shown) return;
         _visScale = 0.70f + 0.30f * _visAlpha;
@@ -190,7 +212,7 @@ internal static class SkiaMode
                      : _surface == Surface.Music ? 432 * s
                      : _surface == Surface.Lyrics ? 576 * s
                      : _surface == Surface.Volume ? 236 * s : 316 * s;
-        float targetH = _surface == Surface.Collapsed ? 36 * s : _surface == Surface.Menu ? 112 * s : _surface == Surface.Volume ? 44 * s : 176 * s;
+        float targetH = _surface == Surface.Collapsed ? 36 * s : _surface == Surface.Menu ? 152 * s : _surface == Surface.Volume ? 44 * s : 176 * s;
         float targetR = _surface == Surface.Collapsed ? 18 * s : (_surface == Surface.Menu || _surface == Surface.Volume) ? 22 * s : 32 * s;
         float targetF = _surface == Surface.Collapsed || _surface == Surface.Volume ? 16 * s : 28 * s;
 
@@ -239,6 +261,7 @@ internal static class SkiaMode
 
     private static void Step(float target, ref float v, ref float vel, float dt)
     {
+        if (!Settings.Current.EnableAnimations) { v = target; vel = 0; return; }
         // stiffness/damping tuned for a soft, non-overshooting settle (~0.35 s)
         vel += ((target - v) * 240f - vel * 25f) * dt;
         v += vel * dt;
@@ -377,9 +400,11 @@ internal static class SkiaMode
             {
                 case 0: SetSurface(Surface.Music); return;
                 case 1: SetSurface(Surface.Lyrics); return;
-                case 2: AudioOutput.CycleDevice(); Menu[2] = MenuOutput(); SetSurface(Surface.Menu); return;
-                case 3: SetSurface(Surface.Collapsed); return;
-                case 4: _window.Close(); return;
+                case 2: AudioOutput.CycleDevice(); RebuildMenu(); SetSurface(Surface.Menu); return;
+                case 3: Startup.IsEnabled = !Startup.IsEnabled; RebuildMenu(); SetSurface(Surface.Menu); return;
+                case 4: Settings.Current.HideWhenMusicStops = !Settings.Current.HideWhenMusicStops; Settings.Save(); RebuildMenu(); SetSurface(Surface.Menu); return;
+                case 5: SetSurface(Surface.Collapsed); return;
+                case 6: _window.Close(); return;
                 default: SetSurface(_beforeMenu); return;
             }
         }
@@ -627,7 +652,7 @@ internal static class SkiaMode
         f.Surface = surf;
         int w = (int)(wDip * s), h = (int)(hDip * s);
         float bodyW = surf switch { Surface.Collapsed => r.CollapsedWidthPx(f.Line, s), Surface.Music => 432 * s, Surface.Lyrics => 576 * s, Surface.Volume => 236 * s, _ => 316 * s };
-        float bodyH = surf == Surface.Collapsed ? 36 * s : surf == Surface.Menu ? 112 * s : surf == Surface.Volume ? 44 * s : 176 * s;
+        float bodyH = surf == Surface.Collapsed ? 36 * s : surf == Surface.Menu ? 152 * s : surf == Surface.Volume ? 44 * s : 176 * s;
         float rb = surf == Surface.Collapsed ? 18 * s : (surf == Surface.Menu || surf == Surface.Volume) ? 22 * s : 32 * s;
         float flare = (surf == Surface.Collapsed || surf == Surface.Volume) ? 16 * s : 28 * s;
 

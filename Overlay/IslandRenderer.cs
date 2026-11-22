@@ -246,7 +246,7 @@ internal sealed class IslandRenderer : IDisposable
     // ---- MENU (316x112)
     private void DrawMenu(SKCanvas c, int w, float s, IslandFrame f, IslandLayout hit)
     {
-        float bodyW = 316 * s, H = 112 * s;
+        float bodyW = 316 * s, H = 152 * s;
         float cx = w / 2f, xl = cx - bodyW / 2f, xr = cx + bodyW / 2f;
         hit.Collapse = new SKRect(xl, 0, xr, H);
 
