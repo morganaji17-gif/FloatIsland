@@ -6,6 +6,9 @@
   scales the whole island including type) and **Opacity**, a live accent swatch strip
   (Album / Green / Blue / Pink / Amber / Mono) and a **Monitor** stepper. Persists as
   `uiScale`, `opacity`, `accent`, `monitorIndex`.
+- New: `tools/sign.ps1` Authenticode-signs the binaries (dev cert / `.pfx` / thumbprint)
+  with no SDK needed, timestamped; the release workflow signs the zips when the
+  `SIGNING_PFX_BASE64` secret is set.
 - New: in-island settings replace the WPF settings dialog entirely.
 - Removed: the WPF renderer, its window, tray service, converters and artwork-cache
   (WPF/media-imaging). The app is now a single Skia/Win32 layered-window build; the exe

@@ -11,6 +11,11 @@ permissions:
 jobs:
   package:
     runs-on: windows-latest
+    env:
+      # Optional Authenticode signing. Set this repository secret to a base64-encoded
+      # .pfx to have the zips signed; leave it unset and the step is skipped.
+      SIGN_PFX_BASE64: ${{ secrets.SIGNING_PFX_BASE64 }}
+      SIGN_PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,6 +31,16 @@ jobs:
       - name: Publish (framework-dependent)
         run: dotnet publish FloatIsland.csproj -c Release -p:Platform=x64 -r win-x64 --self-contained false -o dist-fdd
 
+      - name: Sign binaries (optional)
+        if: env.SIGN_PFX_BASE64 != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+          ./tools/sign.ps1 -Pfx $pfx -PfxPassword $env:SIGN_PFX_PASSWORD -Path dist
+          ./tools/sign.ps1 -Pfx $pfx -PfxPassword $env:SIGN_PFX_PASSWORD -Path dist-fdd
+          Remove-Item $pfx -Force
+
       - name: Add helper script + readme to the zips
         run: |
           Copy-Item Shortcuts.ps1 dist\
@@ -40,7 +55,7 @@ jobs:
 
           The app is hidden until Spotify is playing. Right-click the island for the menu;
           the Settings row there covers scale, opacity, accent and monitor.
-          Windows SmartScreen may warn because the build is unsigned: More info -> Run anyway.
+          If Windows SmartScreen warns, choose More info -> Run anyway.
           "@
           Set-Content dist\README.txt -Value $readme -Encoding UTF8
           Set-Content dist-fdd\README.txt -Value $readme -Encoding UTF8

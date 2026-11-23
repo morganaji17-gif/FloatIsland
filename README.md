@@ -101,8 +101,10 @@ nothing happened" is usually one of these, in order:
    sample player for a few seconds. If that appears, detection is the only question.
 4. **Antivirus.** Unsigned builds are blocked by behaviour-based AV. On a machine with
    **Trend Micro** the exe can refuse to start (`Access is denied`, nothing shows) even
-   though it ran yesterday. Add a folder exception (see [SECURITY.md](SECURITY.md)) or
-   build from source.
+   though it ran yesterday. Sign the build ([Code signing](#code-signing)), add a folder
+   exception (see [SECURITY.md](SECURITY.md)), or run the assembly through the runtime:
+   `dotnet .\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\FloatIsland.dll` - that
+   path is not blocked, which is handy for local builds.
 5. **Check the log:** `%APPDATA%\FloatIsland\Logs\floatisland_YYYYMMDD.log`. It records
    every show/hide, the SMTC session it found, and whether audio capture started.
 
@@ -121,7 +123,43 @@ the app does and does not do.
 - Or whitelist the folder in your AV product.
 
 The permanent fix is code signing; signed binaries carry reputation and stop being
-flagged.
+flagged. See below for how to sign a build.
+
+## Code signing
+
+Signing is optional but it is the root fix for the AV/SmartScreen warnings above.
+[`tools/sign.ps1`](tools/sign.ps1) Authenticode-signs the binaries with the built-in
+`Set-AuthenticodeSignature`, so no Windows SDK or `signtool` is required. Every signature
+is timestamped (SHA-256), so it stays valid after the certificate expires.
+
+Three ways to get a certificate:
+
+| Mode | How | Clears |
+|---|---|---|
+| **CA / EV cert** | `-Thumbprint <hex>` (cert in `Cert:\CurrentUser\My`) | SmartScreen, and most AV - reputation is what matters |
+| **PFX on disk** | `-Pfx cert.pfx -PfxPassword ...` | same, for CI |
+| **Self-signed (dev)** | `-SelfSigned [-TrustRoot]` | Windows' own "unknown publisher" locally; **not** reputation |
+
+```powershell
+# local dev cert, trusted in the current user's stores, then sign the Release build
+powershell -ExecutionPolicy Bypass -File .\tools\sign.ps1 -SelfSigned -TrustRoot
+
+# sign with a real certificate
+powershell -ExecutionPolicy Bypass -File .\tools\sign.ps1 -Thumbprint 1A2B3C4D...
+
+# sign a whole publish folder (what the release workflow does)
+powershell -ExecutionPolicy Bypass -File .\tools\sign.ps1 -Pfx .\cert.pfx -PfxPassword $env:PFX_PW -Path .\dist
+```
+
+`-TrustRoot` puts the dev cert in `LocalMachine\Root` when you are elevated, otherwise
+`CurrentUser\Root` - where Windows shows a one-time "install this certificate?" prompt.
+Note that a **self-signed** cert only removes Windows' own warning; a reputation-based AV
+such as Trend Micro may still block the exe, which is why a CA- or EV-issued certificate
+(or a folder exception) is the real fix.
+
+Releases are signed automatically when the `SIGNING_PFX_BASE64` and `SIGNING_PFX_PASSWORD`
+repository secrets are set (a base64 `.pfx`); otherwise the release workflow skips the
+step and ships unsigned zips.
 
 ## Download
 
@@ -273,6 +311,7 @@ FloatIsland/
   packaging/                   Scoop + winget manifests
   tools/make-demo.ps1          builds docs/demo.png from the render samples
   tools/make-banner.ps1        builds docs/banner.png for the README
+  tools/sign.ps1               Authenticode-signs the binaries (dev / PFX / thumbprint)
   docs/                        screenshots and banner used by this README
   install.ps1                  publish + create shortcuts (from source)
   Shortcuts.ps1                create shortcuts next to a release build
@@ -333,6 +372,7 @@ Other developer utilities:
 FloatIsland.exe --make-icon                     # redraw Assets/app.ico from the Skia artwork
 powershell -File .\tools\make-demo.ps1          # compose docs/demo.png + tight crops
 powershell -File .\tools\make-banner.ps1        # compose docs/banner.png
+powershell -File .\tools\sign.ps1 -SelfSigned   # Authenticode-sign the build (dev cert)
 ```
 
 ## Packaging
