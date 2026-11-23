@@ -31,8 +31,43 @@ internal sealed class OverlayWindow : IDisposable
     public Action? OnShowRequested;
 
     /// <summary>Client-space hit test. When it returns false the window reports HTTRANSPARENT
-    /// so clicks pass through the empty part of the 900x300 surface to whatever is behind it.</summary>
+    /// so clicks pass through the empty part of the surface to whatever is behind it.</summary>
     public Func<int, int, bool>? HitTest;
+
+    /// <summary>Raised for a registered global hotkey (id is one of the Hk* constants).</summary>
+    public Action<int>? OnHotkey;
+
+    // ---- global hotkeys
+    public const int HkPlayPause = 0x5101, HkNext = 0x5102, HkPrev = 0x5103;
+    public const uint MOD_ALT = 0x0001, MOD_CONTROL = 0x0002, MOD_NOREPEAT = 0x4000;
+    public const uint VK_SPACE = 0x20, VK_LEFT = 0x25, VK_RIGHT = 0x27;
+
+    public bool RegisterHotkey(int id, uint mods, uint vk) => Handle != IntPtr.Zero && RegisterHotKey(Handle, id, mods, vk);
+
+    public static void UnregisterHotkeys(IntPtr handle)
+    {
+        if (handle == IntPtr.Zero) return;
+        for (int id = HkPlayPause; id <= HkPrev; id++) UnregisterHotKey(handle, id);
+    }
+
+    /// <summary>True when the foreground window covers its whole monitor (a game or a
+    /// fullscreen video), i.e. the island should get out of the way.</summary>
+    public static bool ForegroundIsFullscreen(IntPtr self)
+    {
+        var fg = GetForegroundWindow();
+        if (fg == IntPtr.Zero || fg == self || fg == GetShellWindow() || fg == GetDesktopWindow()) return false;
+        if (!GetWindowRect(fg, out var r)) return false;
+
+        var mon = MonitorFromWindow(fg, 2 /*MONITOR_DEFAULTTONEAREST*/);
+        if (mon == IntPtr.Zero) return false;
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(mon, ref mi)) return false;
+
+        var m = mi.rcMonitor;
+        const int tol = 2;
+        return r.Left <= m.Left + tol && r.Top <= m.Top + tol
+            && r.Right >= m.Right - tol && r.Bottom >= m.Bottom - tol;
+    }
 
     private IntPtr _memDc, _dib, _oldBmp;
     private bool _disposed;
@@ -44,7 +79,7 @@ internal sealed class OverlayWindow : IDisposable
     private const uint WS_EX_TOPMOST = 0x00000008;
     private const byte AC_SRC_OVER = 0x00, AC_SRC_ALPHA = 0x01;
     private const uint ULW_ALPHA = 0x02;
-    private const uint WM_TIMER = 0x0113, WM_DESTROY = 0x0002, WM_DISPLAYCHANGE = 0x007E, WM_NCHITTEST = 0x0084;
+    private const uint WM_TIMER = 0x0113, WM_DESTROY = 0x0002, WM_DISPLAYCHANGE = 0x007E, WM_NCHITTEST = 0x0084, WM_HOTKEY = 0x0312;
     private const uint WM_LBUTTONDOWN = 0x0201, WM_RBUTTONUP = 0x0205, WM_MOUSEMOVE = 0x0200, WM_MOUSELEAVE = 0x02A3, WM_SETCURSOR = 0x0020;
     private const int SW_SHOWNOACTIVATE = 4;
 
@@ -369,6 +404,9 @@ internal sealed class OverlayWindow : IDisposable
                 case WM_SHOW_REQUESTED:
                     self.OnShowRequested?.Invoke();
                     return IntPtr.Zero;
+                case WM_HOTKEY:
+                    self.OnHotkey?.Invoke((int)wParam);
+                    return IntPtr.Zero;
                 case WM_NCHITTEST:
                 {
                     long lp = lParam.ToInt64();
@@ -454,6 +492,12 @@ internal sealed class OverlayWindow : IDisposable
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string? cls, string? win);
+    [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr h, int id, uint mods, uint vk);
+    [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr h, int id);
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);

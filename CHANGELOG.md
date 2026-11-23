@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- New: global media hotkeys - `Ctrl+Alt+Space` play/pause, `Ctrl+Alt+Left/Right`
+  prev/next, with a short visual peep. Toggle with the *Media hotkeys* menu row.
+- New: **Lyrics sync** menu row (+/- 0.5 s, middle resets) writes `lyricsOffsetMs` and
+  applies the nudge to both the karaoke sweep and the scrolling page.
+- New: hide while a fullscreen app is in the foreground (`hideWhenFullscreen`), polled
+  twice a second and compared against the whole monitor rect.
+- Menu: two more rows (Lyrics sync, Media hotkeys); the body now sizes to the row count
+  (316 x 198-232) instead of a fixed 216.
+- Fix: `RebuildMenu` ran off the end of a 7-slot array after the new rows; the app stayed
+  alive but drew nothing. Menu array is sized to the row list now.
 - Fix: "ran it, nothing appeared". The island peeks for ~4.5 s on launch with a
   *Waiting for Spotify...* pill, launch is now logged (show/hide/audio), and the log names
   the SMTC session it found.

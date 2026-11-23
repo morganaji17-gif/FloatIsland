@@ -38,6 +38,18 @@ public sealed class AppSettings
     /// <summary>Folder scanned for user-supplied .lrc / .txt lyrics.</summary>
     [JsonPropertyName("lyricsFolder")]
     public string LyricsFolder { get; set; } = string.Empty;
+
+    /// <summary>Nudge for lyric timing, in ms. Positive shows lines later (delay), negative earlier.</summary>
+    [JsonPropertyName("lyricsOffsetMs")]
+    public int LyricsOffsetMs { get; set; }
+
+    /// <summary>Global media hotkeys: Ctrl+Alt+Space (play/pause), Ctrl+Alt+Left/Right (prev/next).</summary>
+    [JsonPropertyName("mediaHotkeys")]
+    public bool MediaHotkeys { get; set; } = true;
+
+    /// <summary>Hide the island while a fullscreen app (game, fullscreen video) is in the foreground.</summary>
+    [JsonPropertyName("hideWhenFullscreen")]
+    public bool HideWhenFullscreen { get; set; } = true;
 }
 
 public enum HorizontalAlign { Left = 0, Center = 1, Right = 2 }

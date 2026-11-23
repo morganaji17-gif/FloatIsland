@@ -60,6 +60,11 @@ internal static class SkiaMode
     private static long _lastMonCheck;
     private static int _hover = -1, _menuHover = -1;
 
+    // lyric timing nudge + fullscreen hide
+    private static int _lyricsOffsetMs;
+    private static bool _fullscreen;
+    private static long _lastFsCheck;
+
     // album wash
     private static SKColor _tint = new(8, 9, 11);
     private static bool _hasTint;
@@ -72,7 +77,7 @@ internal static class SkiaMode
     private const int CollapseAfterMs = 1500;
     private const int VolumeHoldMs = 1600;
 
-    private static readonly string[] Menu = new string[7];
+    private static readonly string[] Menu = new string[9];
     private static float _vol;
     private static bool _volMuted;
     private static long _volumeUntil;
@@ -83,16 +88,51 @@ internal static class SkiaMode
         string.IsNullOrWhiteSpace(AudioOutput.DeviceName) ? "Output" : "Output: " + AudioOutput.DeviceName;
     private static string MenuStartup() => "Launch at startup: " + (Startup.IsEnabled ? "On" : "Off");
     private static string MenuHide() => "Hide when stopped: " + (Settings.Current.HideWhenMusicStops ? "On" : "Off");
+    private static string MenuHotkeys() => "Media hotkeys: " + (Settings.Current.MediaHotkeys ? "On" : "Off");
 
     private static void RebuildMenu()
     {
         Menu[0] = "Music";
         Menu[1] = "Lyrics";
-        Menu[2] = MenuOutput();
-        Menu[3] = MenuStartup();
-        Menu[4] = MenuHide();
-        Menu[5] = "Collapse";
-        Menu[6] = "Exit";
+        Menu[2] = "Lyrics sync";            // special row: -  value  +
+        Menu[3] = MenuOutput();
+        Menu[4] = MenuStartup();
+        Menu[5] = MenuHide();
+        Menu[6] = MenuHotkeys();
+        Menu[7] = "Collapse";
+        Menu[8] = "Exit";
+    }
+
+    /// <summary>Ctrl+Alt+Space / Left / Right drive Spotify through SMTC, with a short peek
+    /// so the keypress has visible feedback even when playback is paused.</summary>
+    private static void OnHotkey(int id)
+    {
+        _ = id switch
+        {
+            OverlayWindow.HkPlayPause => Smtc.TogglePlayPauseAsync(),
+            OverlayWindow.HkNext => Smtc.NextAsync(),
+            OverlayWindow.HkPrev => Smtc.PreviousAsync(),
+            _ => Task.CompletedTask,
+        };
+        Log.Info($"[skia] hotkey {id} -> smtc");
+        _forceShowUntil = Environment.TickCount64 + 2500;
+        if (_surface != Surface.Menu) SetSurface(Surface.Collapsed);
+    }
+
+    private static void ApplyHotkeys()
+    {
+        OverlayWindow.UnregisterHotkeys(_window.Handle);
+        if (!Settings.Current.MediaHotkeys)
+        {
+            Log.Info("[skia] media hotkeys disabled");
+            return;
+        }
+        uint mods = OverlayWindow.MOD_CONTROL | OverlayWindow.MOD_ALT | OverlayWindow.MOD_NOREPEAT;
+        bool play = _window.RegisterHotkey(OverlayWindow.HkPlayPause, mods, OverlayWindow.VK_SPACE);
+        bool next = _window.RegisterHotkey(OverlayWindow.HkNext, mods, OverlayWindow.VK_RIGHT);
+        bool prev = _window.RegisterHotkey(OverlayWindow.HkPrev, mods, OverlayWindow.VK_LEFT);
+        Log.Info($"[skia] media hotkeys Ctrl+Alt+Space={play} Right={next} Left={prev}" +
+                 (play || next || prev ? "" : " (all failed - already taken?)"));
     }
 
     public static void Run()
@@ -118,11 +158,7 @@ internal static class SkiaMode
         // Only the body is clickable; the rest of the 900x300 surface lets clicks through.
         _window.HitTest = (x, y) => _hit.Collapse.Width > 0 && Inside(_hit.Collapse, x, y);
 
-        Menu[0] = "Music";
-        Menu[1] = "Lyrics";
-        Menu[2] = MenuOutput();
-        Menu[3] = "Collapse";
-        Menu[4] = "Exit";
+        _lyricsOffsetMs = Settings.Current.LyricsOffsetMs;
         RebuildMenu();
 
         AudioOutput.Start();
@@ -158,8 +194,11 @@ internal static class SkiaMode
         _window.OnTrayShow = () => { _forceShowUntil = Environment.TickCount64 + 5000; SetSurface(Surface.Collapsed); };
         _window.OnShowRequested = () => { _forceShowUntil = Environment.TickCount64 + 6000; SetSurface(Surface.Collapsed); };
         _window.OnTrayExit = () => _window.Close();
+        _window.OnHotkey = OnHotkey;
+        ApplyHotkeys();
         Log.Info("[skia] overlay running (skia path)");
         OverlayWindow.RunLoop();
+        OverlayWindow.UnregisterHotkeys(_window.Handle);
         _window.RemoveTray();
         _capture?.Stop();
         Log.Info("[skia] overlay ended");
@@ -174,9 +213,18 @@ internal static class SkiaMode
 
         TickIndex();
 
+        // Get out of the way of fullscreen apps (games, fullscreen video), polled cheaply.
+        if (now - _lastFsCheck > 500)
+        {
+            _lastFsCheck = now;
+            bool was = _fullscreen;
+            _fullscreen = Settings.Current.HideWhenFullscreen && OverlayWindow.ForegroundIsFullscreen(_window.Handle);
+            if (_fullscreen != was) Log.Info($"[skia] foreground fullscreen={_fullscreen}");
+        }
+
         // Show/hide with a fade + shrink (instant ShowWindow on start, animated on pause).
         bool forced = now < _forceShowUntil;
-        bool want = _playing || (!Settings.Current.HideWhenMusicStops && _hasTrack) || forced;
+        bool want = !_fullscreen && (_playing || (!Settings.Current.HideWhenMusicStops && _hasTrack) || forced);
         if (want && !_shown)
         {
             _shown = true; _visAlpha = 0f; _window.Show2();
@@ -189,7 +237,7 @@ internal static class SkiaMode
             if (!want && _visAlpha <= 0.001f)
             {
                 _window.Hide(); _shown = false;
-                Log.Info("[skia] hide (idle: nothing playing)");
+                Log.Info(_fullscreen ? "[skia] hide (foreground fullscreen)" : "[skia] hide (idle: nothing playing)");
             }
         }
         if (!_shown) { _window.SetFrameInterval(200); return false; }
@@ -226,6 +274,7 @@ internal static class SkiaMode
             f.Bars = Levels.Bars;
             f.AudioActive = _playing && Levels.Active;
             f.Beat = Levels.Beat;
+            f.LyricsOffsetMs = _lyricsOffsetMs;
             f.Volume = _vol; f.VolumeMuted = _volMuted;
         }
 
@@ -243,7 +292,9 @@ internal static class SkiaMode
                      : _surface == Surface.Music ? 432 * s
                      : _surface == Surface.Lyrics ? 576 * s
                      : _surface == Surface.Volume ? 236 * s : 316 * s;
-        float targetH = _surface == Surface.Collapsed ? 36 * s : _surface == Surface.Menu ? 216 * s : _surface == Surface.Volume ? 44 * s : 176 * s;
+        float targetH = _surface == Surface.Collapsed ? 36 * s
+                     : _surface == Surface.Menu ? IslandRenderer.MenuHeightPx(Menu.Length) * s
+                     : _surface == Surface.Volume ? 44 * s : 176 * s;
         float targetR = _surface == Surface.Collapsed ? 18 * s : _surface == Surface.Menu ? 26 * s : _surface == Surface.Volume ? 22 * s : 32 * s;
         float targetF = _surface == Surface.Collapsed || _surface == Surface.Volume ? 16 * s : 28 * s;
 
@@ -309,7 +360,7 @@ internal static class SkiaMode
         var start = Times[_index];
         var end = _index + 1 < Times.Count ? Times[_index + 1] : _durationTs;
         double span = (end - start).TotalMilliseconds;
-        var pos = _pos + TimeSpan.FromMilliseconds(Environment.TickCount64 - _posStamp);
+        var pos = _pos + TimeSpan.FromMilliseconds(Environment.TickCount64 - _posStamp - _lyricsOffsetMs);
         return span <= 1 ? 1f : (float)Math.Clamp((pos - start).TotalMilliseconds / span, 0, 1);
     }
 
@@ -432,11 +483,13 @@ internal static class SkiaMode
             {
                 case 0: SetSurface(Surface.Music); return;
                 case 1: SetSurface(Surface.Lyrics); return;
-                case 2: AudioOutput.CycleDevice(); RebuildMenu(); SetSurface(Surface.Menu); return;
-                case 3: Startup.IsEnabled = !Startup.IsEnabled; RebuildMenu(); SetSurface(Surface.Menu); return;
-                case 4: Settings.Current.HideWhenMusicStops = !Settings.Current.HideWhenMusicStops; Settings.Save(); RebuildMenu(); SetSurface(Surface.Menu); return;
-                case 5: SetSurface(Surface.Collapsed); return;
-                case 6: _window.Close(); return;
+                case 2: AdjustLyricsSync(x); return;
+                case 3: AudioOutput.CycleDevice(); RebuildMenu(); SetSurface(Surface.Menu); return;
+                case 4: Startup.IsEnabled = !Startup.IsEnabled; RebuildMenu(); SetSurface(Surface.Menu); return;
+                case 5: Settings.Current.HideWhenMusicStops = !Settings.Current.HideWhenMusicStops; Settings.Save(); RebuildMenu(); SetSurface(Surface.Menu); return;
+                case 6: Settings.Current.MediaHotkeys = !Settings.Current.MediaHotkeys; Settings.Save(); ApplyHotkeys(); RebuildMenu(); SetSurface(Surface.Menu); return;
+                case 7: SetSurface(Surface.Collapsed); return;
+                case 8: _window.Close(); return;
                 default: SetSurface(_beforeMenu); return;
             }
         }
@@ -454,6 +507,21 @@ internal static class SkiaMode
             return;
         }
         SetSurface(Surface.Collapsed);
+    }
+
+    /// <summary>The "Lyrics sync" menu row: left third = earlier, middle = reset, right third = later.</summary>
+    private static void AdjustLyricsSync(float x)
+    {
+        if (_hit.MenuRows.Length < 3) return;
+        var row = _hit.MenuRows[2];
+        if (row.Width <= 1) return;
+
+        float rel = (x - row.Left) / row.Width;
+        int step = rel < 0.42f ? -500 : rel > 0.58f ? 500 : int.MinValue;
+        _lyricsOffsetMs = step == int.MinValue ? 0 : Math.Clamp(_lyricsOffsetMs + step, -10000, 10000);
+        Settings.Current.LyricsOffsetMs = _lyricsOffsetMs; Settings.Save();
+        Log.Info($"[skia] lyrics offset {_lyricsOffsetMs} ms");
+        RebuildMenu(); SetSurface(Surface.Menu);
     }
 
     private static bool Inside(SKRect r, float x, float y) => x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom;
@@ -547,7 +615,7 @@ internal static class SkiaMode
     private static void TickIndex()
     {
         if (!_playing || Times.Count == 0) return;
-        var pos = _pos + TimeSpan.FromMilliseconds(Environment.TickCount64 - _posStamp);
+        var pos = _pos + TimeSpan.FromMilliseconds(Environment.TickCount64 - _posStamp - _lyricsOffsetMs);
         int idx = -1;
         for (int i = Times.Count - 1; i >= 0; i--) if (Times[i] <= pos) { idx = i; break; }
         if (idx == _index) return;
@@ -739,7 +807,8 @@ internal static class SkiaMode
             Bars = new[] { 0.22f, 0.38f, 0.61f, 0.48f, 0.76f, 0.92f, 0.67f, 0.54f, 0.81f, 0.63f, 0.44f, 0.58f, 0.72f, 0.36f, 0.51f, 0.28f },
             AudioActive = true,
             Beat = 0.25f,
-            MenuLabels = new[] { "Music", "Lyrics", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Collapse", "Exit" },
+            LyricsOffsetMs = 500,
+            MenuLabels = new[] { "Music", "Lyrics", "Lyrics sync", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Media hotkeys: On", "Collapse", "Exit" },
         };
 
         f.Karaoke = 1f;
@@ -886,7 +955,9 @@ internal static class SkiaMode
         f.Surface = surf;
         int w = (int)(wDip * s), h = (int)(hDip * s);
         float bodyW = surf switch { Surface.Collapsed => r.CollapsedWidthPx(f.Line, s), Surface.Music => 432 * s, Surface.Lyrics => 576 * s, Surface.Volume => 236 * s, _ => 316 * s };
-        float bodyH = surf == Surface.Collapsed ? 36 * s : surf == Surface.Menu ? 216 * s : surf == Surface.Volume ? 44 * s : 176 * s;
+        float bodyH = surf == Surface.Collapsed ? 36 * s
+            : surf == Surface.Menu ? IslandRenderer.MenuHeightPx(f.MenuLabels.Length) * s
+            : surf == Surface.Volume ? 44 * s : 176 * s;
         float rb = surf == Surface.Collapsed ? 18 * s : surf == Surface.Menu ? 26 * s : surf == Surface.Volume ? 22 * s : 32 * s;
         float flare = (surf == Surface.Collapsed || surf == Surface.Volume) ? 16 * s : 28 * s;
 

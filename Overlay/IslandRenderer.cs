@@ -47,6 +47,9 @@ internal sealed class IslandFrame
     public float[]? Bars;
     public bool AudioActive;
     public float Beat;
+
+    /// <summary>Lyric timing nudge in ms, shown on the "Lyrics sync" menu row.</summary>
+    public int LyricsOffsetMs;
 }
 
 internal struct IslandMorph
@@ -304,14 +307,17 @@ internal sealed class IslandRenderer : IDisposable
         c.Restore();
     }
 
-    // ---- MENU (316x216)
+    /// <summary>Menu body height (in DIP) for a given number of rows; grows with the list, capped.</summary>
+    public static float MenuHeightPx(int rows) => Math.Min(232f, 58f + 20f * Math.Max(1, rows));
+
+    // ---- MENU (316 x MenuHeightPx)
     private void DrawMenu(SKCanvas c, int w, float s, IslandFrame f, IslandLayout hit)
     {
-        float bodyW = 316 * s, H = 216 * s;
+        var labels = f.MenuLabels.Length > 0 ? f.MenuLabels : new[] { "Exit" };
+        float bodyW = 316 * s, H = MenuHeightPx(labels.Length) * s;
         float cx = w / 2f, xl = cx - bodyW / 2f, xr = cx + bodyW / 2f;
         hit.Collapse = new SKRect(xl, 0, xr, H);
 
-        var labels = f.MenuLabels.Length > 0 ? f.MenuLabels : new[] { "Exit" };
         float pad = 10 * s;
         float header = 30 * s;
 
@@ -349,8 +355,9 @@ internal sealed class IslandRenderer : IDisposable
             string raw = labels[i] ?? "";
             string text = raw;
             string? right = null;
-            bool toggle = false, on = false;
+            bool toggle = false, on = false, sync = false;
             if (raw.StartsWith("Output: ", StringComparison.Ordinal)) { text = "Output"; right = raw[8..]; }
+            else if (text.Equals("Lyrics sync", StringComparison.Ordinal)) { sync = true; }
             else if (raw.EndsWith(": On", StringComparison.Ordinal)) { text = raw[..^4]; toggle = true; on = true; }
             else if (raw.EndsWith(": Off", StringComparison.Ordinal)) { text = raw[..^5]; toggle = true; }
 
@@ -382,13 +389,17 @@ internal sealed class IslandRenderer : IDisposable
             {
                 Switch(c, row.Right - 36 * s, row.MidY - 8 * s, 30 * s, 16 * s, on, s, accent);
             }
+            else if (sync)
+            {
+                DrawSyncControl(c, row, f.LyricsOffsetMs, s, accent, hot);
+            }
             else if (right != null)
             {
                 float maxW = row.Width * 0.42f;
                 string shown = Clip(right, value, maxW);
                 c.DrawText(shown, row.Right - 8 * s - value.MeasureText(shown), Baseline(value, row.MidY), value);
             }
-            else if (text.StartsWith("Music", StringComparison.Ordinal) || text.StartsWith("Lyrics", StringComparison.Ordinal))
+            else if (text.Equals("Music", StringComparison.Ordinal) || text.Equals("Lyrics", StringComparison.Ordinal))
             {
                 using var ch = new SKPaint
                 {
@@ -974,12 +985,55 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
         c.DrawCircle(kx, y + h / 2f, r, knob);
     }
 
-    private enum MenuIcon { None, Music, Lyrics, Output, Startup, Hide, Collapse, Exit }
+    /// <summary>The "Lyrics sync" row control: [ - ]  value  [ + ].</summary>
+    private void DrawSyncControl(SKCanvas c, SKRect row, int offsetMs, float s, SKColor accent, bool hot)
+    {
+        float cy = row.MidY;
+        float r = 8 * s;
+        float plusX = row.Right - 12 * s;
+        float minusX = row.Right - 100 * s;
+
+        SmallStep(c, minusX, cy, r, false, s, hot);
+        SmallStep(c, plusX, cy, r, true, s, hot);
+
+        var val = P(_semi, 11.5f * s, offsetMs == 0 ? Faint : White);
+        string t = FormatOffset(offsetMs);
+        float vx = (minusX + plusX) / 2f;
+        c.DrawText(t, vx - val.MeasureText(t) / 2f, Baseline(val, cy), val);
+    }
+
+    private static void SmallStep(SKCanvas c, float cx, float cy, float r, bool plus, float s, bool hot)
+    {
+        using (var bg = new SKPaint
+        {
+            IsAntialias = true,
+            Color = hot ? new SKColor(255, 255, 255, 0x22) : new SKColor(255, 255, 255, 0x14)
+        })
+            c.DrawCircle(cx, cy, r, bg);
+
+        using var ink = new SKPaint
+        {
+            IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f * s,
+            StrokeCap = SKStrokeCap.Round, Color = new SKColor(255, 255, 255, 225)
+        };
+        c.DrawLine(cx - 3.4f * s, cy, cx + 3.4f * s, cy, ink);
+        if (plus) c.DrawLine(cx, cy - 3.4f * s, cx, cy + 3.4f * s, ink);
+    }
+
+    private static string FormatOffset(int ms)
+    {
+        if (ms == 0) return "0 s";
+        return (ms > 0 ? "+" : "\u2212") + (Math.Abs(ms) / 1000.0).ToString("0.0") + " s";
+    }
+
+    private enum MenuIcon { None, Music, Lyrics, Sync, Output, Startup, Hide, Hotkeys, Collapse, Exit }
 
     private static MenuIcon MenuIconFor(string text)
     {
+        if (text.Equals("Lyrics sync", StringComparison.Ordinal)) return MenuIcon.Sync;
         if (text.StartsWith("Music", StringComparison.Ordinal)) return MenuIcon.Music;
         if (text.StartsWith("Lyrics", StringComparison.Ordinal)) return MenuIcon.Lyrics;
+        if (text.StartsWith("Media", StringComparison.Ordinal)) return MenuIcon.Hotkeys;
         if (text.StartsWith("Output", StringComparison.Ordinal)) return MenuIcon.Output;
         if (text.StartsWith("Launch", StringComparison.Ordinal)) return MenuIcon.Startup;
         if (text.StartsWith("Hide", StringComparison.Ordinal)) return MenuIcon.Hide;
@@ -1048,6 +1102,25 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
                 c.DrawPath(p, stroke);
                 c.DrawCircle(cx, cy, 2 * s, fill);
                 c.DrawLine(cx - 7 * s, cy + 7 * s, cx + 7 * s, cy - 7 * s, stroke);
+                break;
+            }
+
+            case MenuIcon.Sync:
+            {
+                c.DrawArc(new SKRect(cx - 6 * s, cy - 6 * s, cx + 6 * s, cy + 6 * s), 40, 250, false, stroke);
+                using var p = new SKPath();
+                p.MoveTo(cx + 3 * s, cy - 8 * s); p.LineTo(cx + 8 * s, cy - 4 * s); p.LineTo(cx + 3 * s, cy - 1 * s);
+                p.Close();
+                c.DrawPath(p, fill);
+                break;
+            }
+
+            case MenuIcon.Hotkeys:
+            {
+                c.DrawRoundRect(new SKRect(cx - 8 * s, cy - 5 * s, cx + 8 * s, cy + 5 * s), 2 * s, 2 * s, stroke);
+                for (int k = 0; k < 3; k++)
+                    c.DrawRoundRect(new SKRect(cx - 6 * s + k * 4 * s, cy - 2.5f * s, cx - 4.5f * s + k * 4 * s, cy - 1 * s), 0.6f * s, 0.6f * s, fill);
+                c.DrawRoundRect(new SKRect(cx - 4 * s, cy + 1 * s, cx + 4 * s, cy + 2.5f * s), 0.6f * s, 0.6f * s, fill);
                 break;
             }
 

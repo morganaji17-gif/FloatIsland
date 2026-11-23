@@ -37,7 +37,11 @@ full player, a karaoke lyrics page and a quick-settings menu.
 - **Real audio-reactive input** - Windows **process loopback capture** isolates Spotify's
   rendered audio (not the microphone, not other apps) and drives the equaliser bars.
 - **A menu that feels native** - icon rows, inline on/off switches, the current output
-  device, and a version chip.
+  device, a lyric-timing stepper, and a version chip.
+- **Global hotkeys** - `Ctrl+Alt+Space` / `Left` / `Right` for play-pause and track skip,
+  with a quick visual peep so a keypress always has feedback.
+- **Out of the way** - hides itself while a fullscreen app is focused, and the overlay is
+  click-through outside the island body.
 - **Event-driven** - no metadata polling, and no frame is blitted while paused.
 
 ## A closer look
@@ -167,7 +171,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 | Collapsed | LINE | 136-452 x 36 | paused **or** playing | cover + one line: the current lyric, or `title - artist` when there is none; EQ bars and a bottom-edge progress line |
 | Expanded | MUSIC | 432 x 176 | click the island | cover, title, artist, current lyric, seek, prev / play / next, lyric toggle, mascot |
 | Expanded | LYRICS | 576 x 176 | click the lyric toggle | two columns: cover/title/seek/controls left, divider, scrolling lyrics right |
-| Menu | MENU | 316 x 216 | right-click the island, or the tray icon | Music / Lyrics / Output: `<device>` / Launch at startup / Hide when stopped / Collapse / Exit |
+| Menu | MENU | 316 x 198-232 | right-click the island, or the tray icon | Music / Lyrics / Lyrics sync / Output: `<device>` / Launch at startup / Hide when stopped / Media hotkeys / Collapse / Exit |
 | Volume | VOLUME | 236 x 44 | change the system volume | speaker icon, level bar, percentage; auto-dismisses after 1.6 s |
 
 - The expanded panel collapses again ~1.5 s after the pointer leaves.
@@ -189,6 +193,35 @@ Providers live behind `ILyricsProvider` (`Services/LyricsService.cs`):
 
 Fallbacks are explicit and never fake: *Loading lyrics...*, *Instrumental track*,
 *No lyrics found for this track*, *Lyrics (not synchronized)*.
+
+### Nudging the timing
+
+Community LRC timings are often a few hundred ms out. The menu row **Lyrics sync** adjusts
+a global nudge: click **-** to show lines earlier, **+** to show them later, or the middle
+of the row to reset. The value is saved to `lyricsOffsetMs` and applied to both the karaoke
+sweep and the scrolling page. Steps are 0.5 s, clamped to ±10 s.
+
+## Hotkeys
+
+Three global hotkeys are registered while the Skia renderer runs (toggle with the
+**Media hotkeys** menu row, or `mediaHotkeys` in settings):
+
+| Keys | Action |
+|---|---|
+| `Ctrl+Alt+Space` | play / pause |
+| `Ctrl+Alt+Left` | previous track |
+| `Ctrl+Alt+Right` | next track |
+
+They drive Spotify through the same SMTC transport the buttons use, and flash the pill for
+2.5 s so a keypress always gives feedback, even while paused. They are plain
+`RegisterHotKey` combos, not the hardware media keys - those stay with Spotify itself.
+
+## Fullscreen
+
+While a fullscreen app is in the foreground (a game, a fullscreen video), the island hides
+itself and comes back when you leave. Toggle with `hideWhenFullscreen` in settings. It
+compares the foreground window against the whole monitor rect, so a merely maximised
+window (taskbar still visible) does not count.
 
 ## Two renderers
 
@@ -265,6 +298,9 @@ the pointer is on.
 | `visualizerEnabled` | true | |
 | `lyricsSource` | Auto | Auto / Lrclib / Local / None |
 | `lyricsFolder` | - | folder scanned for local lyrics |
+| `lyricsOffsetMs` | 0 | lyric timing nudge in ms (+ = later) |
+| `mediaHotkeys` | true | Ctrl+Alt+Space / Left / Right |
+| `hideWhenFullscreen` | true | hide while a fullscreen app is focused |
 
 ## Diagnostics
 
