@@ -33,13 +33,13 @@ jobs:
           $readme = @"
           Float Island - dynamic island for Spotify (Windows 11)
 
-          1. Run FloatIsland.exe            (WPF renderer)
-             Run FloatIsland.exe --skia     (Skia renderer, recommended)
+          1. Run FloatIsland.exe
 
           2. Optional: create Start Menu / Desktop shortcuts
              powershell -ExecutionPolicy Bypass -File .\Shortcuts.ps1
 
-          The app is hidden until Spotify is playing. Right-click the island for the menu.
+          The app is hidden until Spotify is playing. Right-click the island for the menu;
+          the Settings row there covers scale, opacity, accent and monitor.
           Windows SmartScreen may warn because the build is unsigned: More info -> Run anyway.
           "@
           Set-Content dist\README.txt -Value $readme -Encoding UTF8

@@ -22,7 +22,8 @@
 Float Island hangs from the top centre of the screen and stays out of the way. It reads
 Spotify's media session through Windows SMTC, fetches synced lyrics from LRCLIB (or your
 own `.lrc` files), and paints a compact player that morphs between a one-line pill, a
-full player, a karaoke lyrics page and a quick-settings menu.
+full player, a karaoke lyrics page, a quick menu and a settings surface - all inside one
+continuous shape.
 
 ## Highlights
 
@@ -38,6 +39,9 @@ full player, a karaoke lyrics page and a quick-settings menu.
   rendered audio (not the microphone, not other apps) and drives the equaliser bars.
 - **A menu that feels native** - icon rows, inline on/off switches, the current output
   device, a lyric-timing stepper, and a version chip.
+- **Looks you can tune in place** - a Settings surface inside the island: size (0.80-1.40x),
+  opacity, an accent theme (album-following or fixed green / blue / pink / amber / mono),
+  and which monitor it sits on. Sliders drag; nothing reopens a dialog.
 - **Global hotkeys** - `Ctrl+Alt+Space` / `Left` / `Right` for play-pause and track skip,
   with a quick visual peep so a keypress always has feedback.
 - **Out of the way** - hides itself while a fullscreen app is focused, and the overlay is
@@ -50,15 +54,20 @@ full player, a karaoke lyrics page and a quick-settings menu.
 |:---:|:---:|:---:|
 | <img src="docs/collapsed-crop.png" alt="Collapsed pill" width="100%"> | <img src="docs/music-crop.png" alt="Expanded player" width="100%"> | <img src="docs/lyrics-crop.png" alt="Lyrics page" width="100%"> |
 
-| Menu | Volume | Album tint |
+| Menu | Settings | Volume |
 |:---:|:---:|:---:|
-| <img src="docs/menu-crop.png" alt="Quick settings menu" width="100%"> | <img src="docs/volume-crop.png" alt="Volume surface" width="100%"> | <img src="docs/tint_green-crop.png" alt="Green album tint" width="100%"> |
+| <img src="docs/menu-crop.png" alt="Quick settings menu" width="100%"> | <img src="docs/settings-crop.png" alt="Settings surface with scale, opacity, accent and monitor" width="100%"> | <img src="docs/volume-crop.png" alt="Volume surface" width="100%"> |
+
+| Album tint: green | red | white |
+|:---:|:---:|:---:|
+| <img src="docs/tint_green-crop.png" alt="Green album tint" width="100%"> | <img src="docs/tint_red-crop.png" alt="Red album tint" width="100%"> | <img src="docs/tint_white-crop.png" alt="White album tint" width="100%"> |
 
 ### Design notes
 
 The interface is drawn with Skia at 60 fps and animated with a spring (stiffness 240,
-damping 25). The window itself never resizes: the body morphs inside a fixed surface, so
-every transition - pill to player, player to lyrics, menu open - is one continuous shape.
+damping 25). The body morphs inside a fixed surface, so every transition - pill to player,
+player to lyrics, menu open, settings open - is one continuous shape. The window itself only
+changes size when you change **Size** (it grows with the content so nothing clips).
 
 - **Type**: Plus Jakarta Sans (SemiBold / Medium / Bold), bundled under the SIL OFL.
 - **Surface**: a near-black vertical gradient, a hairline top highlight, a soft bottom
@@ -69,6 +78,8 @@ every transition - pill to player, player to lyrics, menu open - is one continuo
 - **Lyrics**: the active line gets an album-tinted marker, the page reveals in a stagger,
   and the album wash fades in behind the text.
 - **Menu**: grouped rows, real switches, a chevron for navigation and a `vX.Y` chip.
+- **Settings**: two drag sliders (size, opacity), an accent swatch strip that previews the
+  live cover tint on the *Album* chip, and a monitor stepper.
 
 ## Requirements
 
@@ -122,7 +133,7 @@ Grab a zip from the **[latest release](https://github.com/morganaji17-gif/FloatI
 | `FloatIsland-win-x64-fdd.zip` | ~2 MB | the .NET 10 Desktop Runtime |
 
 1. Unzip anywhere (e.g. `C:\Users\<you>\FloatIsland`).
-2. Run `FloatIsland.exe --skia` - or `FloatIsland.exe` for the WPF renderer.
+2. Run `FloatIsland.exe`.
 3. Optional, for Start Menu / Desktop shortcuts:
    ```powershell
    powershell -ExecutionPolicy Bypass -File .\Shortcuts.ps1
@@ -143,8 +154,7 @@ No installer, no background service, no account. It only needs Spotify Desktop r
 
 ```powershell
 # unzip FloatIsland-win-x64.zip, then
-.\FloatIsland.exe --skia     # Skia renderer (recommended: lightest, smoothest)
-.\FloatIsland.exe            # WPF renderer
+.\FloatIsland.exe
 ```
 
 **From source**
@@ -153,8 +163,11 @@ No installer, no background service, no account. It only needs Spotify Desktop r
 git clone https://github.com/morganaji17-gif/FloatIsland.git
 cd FloatIsland
 dotnet build -c Release -p:Platform=x64
-.\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\FloatIsland.exe --skia
+.\bin\x64\Release\net10.0-windows10.0.19041.0\win-x64\FloatIsland.exe
 ```
+
+> If a behaviour-based antivirus blocks the freshly built exe, run the same assembly
+> through the runtime instead: `dotnet .\FloatIsland.dll` (see troubleshooting above).
 
 **Install as an app (Start Menu / Desktop shortcut)**
 
@@ -171,15 +184,18 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 | Collapsed | LINE | 136-452 x 36 | paused **or** playing | cover + one line: the current lyric, or `title - artist` when there is none; EQ bars and a bottom-edge progress line |
 | Expanded | MUSIC | 432 x 176 | click the island | cover, title, artist, current lyric, seek, prev / play / next, lyric toggle, mascot |
 | Expanded | LYRICS | 576 x 176 | click the lyric toggle | two columns: cover/title/seek/controls left, divider, scrolling lyrics right |
-| Menu | MENU | 316 x 198-232 | right-click the island, or the tray icon | Music / Lyrics / Lyrics sync / Output: `<device>` / Launch at startup / Hide when stopped / Media hotkeys / Collapse / Exit |
+| Menu | MENU | 316 x 198-232 | right-click the island, or the tray icon | Music / Lyrics / Lyrics sync / Output: `<device>` / Launch at startup / Hide when stopped / Media hotkeys / Settings / Collapse / Exit |
+| Settings | SETTINGS | 316 x 232 | the **Settings** menu row | scale + opacity sliders, an accent swatch strip, a monitor stepper, Back |
 | Volume | VOLUME | 236 x 44 | change the system volume | speaker icon, level bar, percentage; auto-dismisses after 1.6 s |
 
-- The expanded panel collapses again ~1.5 s after the pointer leaves.
+- The expanded panel collapses again ~1.5 s after the pointer leaves. The menu and the
+  Settings surface stay put while the pointer is over them.
 - The island is hidden while playback is not running, and fades out rather than
   disappearing instantly. It peeks for ~4.5 s on launch so you can see it exists.
 - Only the island body is clickable: the rest of the overlay surface is click-through, so
   it never swallows clicks meant for the desktop underneath.
-- The menu switches are the settings themselves - click a row to toggle it in place.
+- The menu switches are the settings themselves - click a row to toggle it in place. The
+  sliders on the Settings surface are drag-to-set.
 - Launching the app while it is already running asks the existing island to show.
 
 ## Lyrics
@@ -223,45 +239,35 @@ itself and comes back when you leave. Toggle with `hideWhenFullscreen` in settin
 compares the foreground window against the whole monitor rect, so a merely maximised
 window (taskbar still visible) does not count.
 
-## Two renderers
+## Rendering
 
-| | WPF (`Controls/`, `MainWindow.xaml`) | Skia (`Overlay/`) - `--skia` |
-|---|---|---|
-| Window | WPF `AllowsTransparency` | Win32 layered + `UpdateLayeredWindow` |
-| Drawing | XAML visual tree | SkiaSharp raster |
-| Compositing | software (WPF limitation) | bitmap push per frame |
-| Tray icon | yes | yes |
-| Settings | WPF dialog | island menu (quick settings) |
-| Status | **legacy** - kept for the settings dialog | **recommended** |
+Float Island is a single Skia renderer over a Win32 layered window. It draws each frame to a
+bitmap and hands it to `UpdateLayeredWindow`, so the compositor does the alpha blending -
+lighter and smoother than a WPF `AllowsTransparency` window, which is composited in software.
 
-A WPF window with `AllowsTransparency` is composited in software, so its cost scales
-with window area. The `--skia` path draws to a bitmap and hands it to the OS, which is
-lighter and smoother. It is the default the shortcuts use; the WPF renderer is kept
-only for the full settings dialog and will be dropped in a future major.
+- The window is a fixed surface; the body morphs inside it, so nothing resizes per frame.
+- The tray icon, menu, quick settings and the full settings surface all live in the overlay.
+  There is no separate settings dialog and no WPF dependency in the build.
 
 ## Architecture
 
 ```
 FloatIsland/
-  MainWindow.xaml / .cs        WPF notch window, state machine, animations
-  MainWindow.IslandSkin.cs     album wash, karaoke sweep, marquee (WPF helpers)
-  Controls/IslandShape.cs      flared capsule geometry
-  Controls/Visualizer.cs       WPF bar renderer + animatable corner radius
+  Program.cs                   entry point, single-instance mutex, diagnostic switches
   Overlay/
-    OverlayWindow.cs           Win32 layered window (UpdateLayeredWindow)
-    IslandRenderer.cs          Skia renderer for every surface
+    OverlayWindow.cs           Win32 layered window, tray, hotkeys, drag/capture
+    IslandRenderer.cs          Skia renderer for every surface (incl. settings)
     SkiaMode.cs                island state machine, input, SMTC, lyrics, audio
   Models/                      TrackInfo, AudioLevels, AppSettings
   Services/
-    SMTCManager.cs             Spotify-only SMTC detection & transport
+    SMTCManager.cs             Spotify-only SMTC detection & transport (retry/backoff)
     ProcessLoopbackCapture.cs  per-process WASAPI loopback + FFT
     LyricsService.cs           provider abstraction + LRCLIB + local LRC
     AudioOutput.cs             Core Audio volume + output-device switching
-    ArtworkCache.cs            LRU thumbnail cache
-    SettingsManager.cs / StartupManager.cs / TrayIconService.cs / Log.cs
+    SettingsManager.cs / StartupManager.cs / Log.cs
     SelfTest.cs                --selftest assertions
     IconMaker.cs               --make-icon (draws Assets/app.ico with Skia)
-  Converters/                  WPF value converters
+    Diagnostics.cs             --smtc-probe / --art-probe / --lyrics-probe ...
   Assets/Fonts/                Plus Jakarta Sans (SIL OFL 1.1)
   Assets/app.ico               application icon (generated by --make-icon)
   packaging/                   Scoop + winget manifests
@@ -283,24 +289,25 @@ the pointer is on.
 
 ## Settings
 
-`%APPDATA%\FloatIsland\settings.json`
+Everything is editable inside the island (the **Settings** menu row); the same values live
+in `%APPDATA%\FloatIsland\settings.json`.
 
 | Setting | Default | Notes |
 |---|---|---|
-| `launchOnStartup` | false | HKCU `...\Run` |
-| `startMinimized` | false | |
-| `showWhenMusicStarts` | true | |
-| `hideWhenMusicStops` | true | |
-| `collapseWhenIdle` | true | |
+| `hideWhenMusicStops` | true | menu: *Hide when stopped* |
 | `enableAnimations` | true | |
-| `verticalOffset` | 0 | px from the top edge (0 = flush) |
-| `horizontalAlign` | Center | Left / Center / Right |
-| `visualizerEnabled` | true | |
 | `lyricsSource` | Auto | Auto / Lrclib / Local / None |
 | `lyricsFolder` | - | folder scanned for local lyrics |
 | `lyricsOffsetMs` | 0 | lyric timing nudge in ms (+ = later) |
 | `mediaHotkeys` | true | Ctrl+Alt+Space / Left / Right |
 | `hideWhenFullscreen` | true | hide while a fullscreen app is focused |
+| `uiScale` | 1.0 | overall size, 0.80-1.40 (type scales with it) |
+| `opacity` | 1.0 | whole-island opacity, 0.40-1.00 |
+| `accent` | Album | Album / Green / Blue / Pink / Amber / Mono |
+| `monitorIndex` | -1 | -1 follows the pointer, else a 0-based monitor |
+
+`launchOnStartup` is not in the file: the menu's *Launch at startup* row writes HKCU
+`...\Run` directly, so the registry is the single source of truth for it.
 
 ## Diagnostics
 
@@ -316,7 +323,6 @@ FloatIsland.exe --smtc-cmd play|pause|next|prev|seek
 FloatIsland.exe --selftest-capture spotify|<pid> [s]
 FloatIsland.exe --art-probe [rounds] [gapSeconds]
 FloatIsland.exe --lyrics-probe [local]
-FloatIsland.exe --ui-probe [cycle] [stepSeconds]   # WPF renderer only: log window/notch geometry
 ```
 
 `--selftest` and `--skia-shot` are what CI runs.
@@ -339,7 +345,7 @@ workflow attaches the zips.
 
 Measured on a Ryzen 7 7435HS (16 threads), .NET 10 Release x64, 125 % scaling.
 
-**Skia renderer (`--skia`)**
+**Renderer**
 
 | State | CPU | Notes |
 |---|---|---|
@@ -348,18 +354,11 @@ Measured on a Ryzen 7 7435HS (16 threads), .NET 10 Release x64, 125 % scaling.
 | Per frame, measured | 0.35 ms collapsed, 0.83 ms player, 0.87 ms lyrics | `--skia-bench` |
 
 Working set ~77-110 MB, private ~20-40 MB, 15-30 threads. The surface is a single
-900x300 bitmap pushed with `UpdateLayeredWindow` (≈1.1 MB per frame at 60 fps).
+900x300 bitmap pushed with `UpdateLayeredWindow` (≈1.1 MB per frame at 60 fps); it grows
+with `uiScale`.
 
 The renderer caches its paints, gradient shaders and glows; creating them per frame cost
 about 2x more. `--skia-bench [frames]` reports the numbers above on your machine.
-
-**WPF renderer** (the legacy path)
-
-| Scenario | CPU | Working set |
-|---|---|---|
-| Idle - paused | ~0.4 % of one core | ~160 MB |
-| Playing - lyrics + capture | ~4-5 % of one core | ~170 MB |
-| Loopback capture + FFT alone (48 kHz) | 2.6-4.1 % of one core | - |
 
 Disk: the framework-dependent zip is ~2 MB, the self-contained one ~100 MB (the .NET
 runtime dominates).
@@ -374,8 +373,8 @@ runtime dominates).
 4. Spotify Web Player is not detected (by design).
 5. LRCLIB coverage is community-maintained; instrumentals and obscure tracks may have
    no lyrics.
-6. The Skia path exposes quick settings (startup, hide-when-stopped, output device) in
-   its menu; the full settings dialog is still the WPF one.
+6. Everything is editable from the island itself (menu rows plus the Settings surface:
+   size, opacity, accent, monitor). Some rarely-used knobs live only in `settings.json`.
 
 ## Disclaimer
 

@@ -65,7 +65,7 @@ Write-Host "wrote docs\demo.png ($bw x $bh)"
 $out.Dispose()
 
 # Tight crops for the README's screenshot table.
-foreach ($n in 'menu', 'volume', 'tint_green', 'tint_red', 'tint_white') {
+foreach ($n in 'menu', 'settings', 'volume', 'tint_green', 'tint_red', 'tint_white') {
     $src = [System.Drawing.Bitmap]::FromFile((Join-Path $root "docs\$n.png"))
     $r = Get-ContentBounds $src
     $crop = $src.Clone($r, $src.PixelFormat)

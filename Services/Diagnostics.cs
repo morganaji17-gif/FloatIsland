@@ -1,7 +1,8 @@
 using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
-using System.Windows.Media.Imaging;
+using SkiaSharp;
+using Windows.Storage.Streams;
 using FloatIsland.Models;
 using Windowish = global::Windows.Media.Control;
 
@@ -158,26 +159,21 @@ internal static class Diagnostics
     // ────────────────────────────────────────────────────────────── TEST 2
     public static void ArtworkProbe(int rounds, int gapSeconds)
     {
-        using var cache = new ArtworkCache();
         for (int r = 0; r < rounds; r++)
         {
             var s = SpotifySession();
             if (s == null) { Log.Info($"{P} art no Spotify session"); return; }
 
             var p = s.TryGetMediaPropertiesAsync().AsTask().GetAwaiter().GetResult();
-            var key = $"{s.SourceAppUserModelId}|{p?.Title}|{p?.Artist}";
             var sw = Stopwatch.StartNew();
-            var bmp = cache.LoadAsync(p?.Thumbnail, key).GetAwaiter().GetResult();
+            using var img = DecodeThumb(p?.Thumbnail);
             sw.Stop();
             Log.Info($"{P} art round={r} title='{Trunc(p?.Title, 34)}' artist='{Trunc(p?.Artist, 24)}' " +
-                     $"streamRef={(p?.Thumbnail != null)} decoded={(bmp != null)} " +
-                     $"px={(bmp != null ? $"{bmp.PixelWidth}x{bmp.PixelHeight}" : "-")} sha1={HashBitmap(bmp)} " +
+                     $"streamRef={(p?.Thumbnail != null)} decoded={(img != null)} " +
+                     $"px={(img != null ? $"{img.Width}x{img.Height}" : "-")} sha1={HashImage(img)} " +
                      $"decodeMs={sw.ElapsedMilliseconds}");
 
-            var again = cache.LoadAsync(p?.Thumbnail, key).GetAwaiter().GetResult();
-            Log.Info($"{P} art round={r} cacheHit={ReferenceEquals(bmp, again)} (same instance = served from cache)");
-
-            var none = cache.LoadAsync(null, null).GetAwaiter().GetResult();
+            using var none = DecodeThumb(null);
             Log.Info($"{P} art round={r} missingArtworkFallback={(none == null ? "null -> placeholder shown" : "UNEXPECTED image")}");
 
             if (r + 1 < rounds)
@@ -189,16 +185,31 @@ internal static class Diagnostics
         }
     }
 
-    private static string HashBitmap(BitmapImage? b)
+    /// <summary>Decodes album art the same way the Skia renderer does.</summary>
+    private static SKImage? DecodeThumb(IRandomAccessStreamReference? reference)
     {
-        if (b == null) return "-";
+        if (reference == null) return null;
         try
         {
-            var enc = new PngBitmapEncoder();
-            enc.Frames.Add(BitmapFrame.Create(b));
+            using var stream = reference.OpenReadAsync().AsTask().GetAwaiter().GetResult();
             using var ms = new MemoryStream();
-            enc.Save(ms);
-            return Convert.ToHexString(MD5.HashData(ms.ToArray()))[..12].ToLowerInvariant();
+            using (var rs = stream.AsStreamForRead()) rs.CopyTo(ms);
+            return SKImage.FromEncodedData(ms.ToArray());
+        }
+        catch (Exception ex)
+        {
+            Log.Debug($"{P} art decode: {ex.Message}");
+            return null;
+        }
+    }
+
+    private static string HashImage(SKImage? img)
+    {
+        if (img == null) return "-";
+        try
+        {
+            using var data = img.Encode(SKEncodedImageFormat.Png, 90);
+            return Convert.ToHexString(MD5.HashData(data.ToArray()))[..12].ToLowerInvariant();
         }
         catch (Exception ex) { return "err:" + ex.GetType().Name; }
     }

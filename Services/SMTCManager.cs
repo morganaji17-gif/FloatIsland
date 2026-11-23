@@ -28,7 +28,13 @@ public sealed class SMTCManager : IDisposable
         if (IsInitialized) return;
         try
         {
-            _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+            // RequestAsync can fail transiently (the media broker restarts, or a WinRT
+            // apartment hiccup surfaces as "Thread is running or terminated"). Retry with
+            // backoff before giving up.
+            _manager = await RetryAsync(
+                async () => await GlobalSystemMediaTransportControlsSessionManager.RequestAsync(),
+                5, 300, "SMTC init");
+
             if (_manager == null) { InitFailed?.Invoke(this, EventArgs.Empty); return; }
             _manager.CurrentSessionChanged += OnCurrentSessionChanged;
             _manager.SessionsChanged += OnSessionsChanged;
@@ -40,6 +46,47 @@ public sealed class SMTCManager : IDisposable
             Log.Error($"SMTC init: {ex.Message}");
             InitFailed?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>Tears the manager down and requests it again (used when a read fails).</summary>
+    public async Task ReinitializeAsync()
+    {
+        DetachManager();
+        IsInitialized = false;
+        await InitializeAsync();
+        SessionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void DetachManager()
+    {
+        try
+        {
+            if (_manager != null)
+            {
+                _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
+                _manager.SessionsChanged -= OnSessionsChanged;
+            }
+        }
+        catch { }
+        DetachCurrent();
+        _manager = null;
+    }
+
+    /// <summary>Retries an async factory up to <paramref name="attempts"/> times with exponential backoff.</summary>
+    private static async Task<T?> RetryAsync<T>(Func<Task<T?>> op, int attempts, int baseMs, string what)
+        where T : class
+    {
+        for (int i = 0; i < attempts; i++)
+        {
+            try { return await op(); }
+            catch (Exception ex)
+            {
+                Log.Warn($"{what}: attempt {i + 1}/{attempts} failed: {ex.Message}");
+                if (i == attempts - 1) throw;
+                await Task.Delay(baseMs * (1 << i));
+            }
+        }
+        return null;
     }
 
     private void OnCurrentSessionChanged(object sender, CurrentSessionChangedEventArgs e)
@@ -130,31 +177,44 @@ public sealed class SMTCManager : IDisposable
 
     public async Task<TrackInfo?> GetCurrentTrackAsync()
     {
+        if (!IsInitialized) await InitializeAsync();
         if (_session == null) return null;
+
         try
         {
-            var snap = TrackInfo.FromSession(_session);
-            try
-            {
-                var props = await _session.TryGetMediaPropertiesAsync();
-                if (props != null)
-                    return snap with
-                    {
-                        Title = props.Title,
-                        Artist = props.Artist,
-                        Album = props.AlbumTitle,
-                        Thumbnail = props.Thumbnail,
-                        ThumbnailCacheKey = $"{_session.SourceAppUserModelId}|{props.Title}|{props.Artist}"
-                    };
-            }
-            catch (Exception ex) { Log.Debug($"SMTC props: {ex.Message}"); }
-            return snap;
+            return await ReadTrackAsync();
         }
         catch (Exception ex)
         {
-            Log.Warn($"SMTC snapshot: {ex.Message}");
-            return null;
+            // A dead session throws a WinRT error ("Thread is running or terminated...");
+            // rebuild the manager once and try again instead of going quiet forever.
+            Log.Warn($"SMTC read failed ({ex.Message}) - reinitialising");
+            await ReinitializeAsync();
+            if (_session == null) return null;
+            try { return await ReadTrackAsync(); }
+            catch (Exception ex2) { Log.Warn($"SMTC read retry: {ex2.Message}"); return null; }
         }
+    }
+
+    private async Task<TrackInfo?> ReadTrackAsync()
+    {
+        if (_session == null) return null;
+        var snap = TrackInfo.FromSession(_session);
+        try
+        {
+            var props = await _session.TryGetMediaPropertiesAsync();
+            if (props != null)
+                return snap with
+                {
+                    Title = props.Title,
+                    Artist = props.Artist,
+                    Album = props.AlbumTitle,
+                    Thumbnail = props.Thumbnail,
+                    ThumbnailCacheKey = $"{_session.SourceAppUserModelId}|{props.Title}|{props.Artist}"
+                };
+        }
+        catch (Exception ex) { Log.Debug($"SMTC props: {ex.Message}"); }
+        return snap;
     }
 
     public async Task TogglePlayPauseAsync()

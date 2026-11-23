@@ -77,7 +77,8 @@ internal static class SkiaMode
     private const int CollapseAfterMs = 1500;
     private const int VolumeHoldMs = 1600;
 
-    private static readonly string[] Menu = new string[9];
+    private static readonly string[] Menu = new string[10];
+    private static int _monCount = 1;
     private static float _vol;
     private static bool _volMuted;
     private static long _volumeUntil;
@@ -99,8 +100,9 @@ internal static class SkiaMode
         Menu[4] = MenuStartup();
         Menu[5] = MenuHide();
         Menu[6] = MenuHotkeys();
-        Menu[7] = "Collapse";
-        Menu[8] = "Exit";
+        Menu[7] = "Settings";
+        Menu[8] = "Collapse";
+        Menu[9] = "Exit";
     }
 
     /// <summary>Ctrl+Alt+Space / Left / Right drive Spotify through SMTC, with a short peek
@@ -157,9 +159,20 @@ internal static class SkiaMode
         _window.OnMouseLeave = () => { _mouseInside = false; _leftAt = Environment.TickCount64; _hover = -1; _menuHover = -1; };
         // Only the body is clickable; the rest of the 900x300 surface lets clicks through.
         _window.HitTest = (x, y) => _hit.Collapse.Width > 0 && Inside(_hit.Collapse, x, y);
+        _window.OnLeftDown = BeginSliderDrag;
+        _window.OnDrag = ApplySlider;
+        _window.OnLeftUp = EndSliderDrag;
 
         _lyricsOffsetMs = Settings.Current.LyricsOffsetMs;
         RebuildMenu();
+
+        // Apply the persisted look/placement up front, before the first frame.
+        _monCount = OverlayWindow.MonitorCount();
+        _window.WindowAlpha = (byte)Math.Round(255 * Math.Clamp(Settings.Current.Opacity, 0.4, 1.0));
+        if (Math.Abs(Settings.Current.UiScale - 1.0) > 0.001)
+            _window.Resize(WinW * Settings.Current.UiScale, WinH * Settings.Current.UiScale);
+        if (Settings.Current.MonitorIndex >= 0)
+            _window.PlaceOnMonitor(Settings.Current.MonitorIndex);
 
         AudioOutput.Start();
         AudioOutput.VolumeChanged += (v, m) =>
@@ -247,13 +260,14 @@ internal static class SkiaMode
         // the volume surface auto-dismisses back to whatever was showing before
         if (_surface == Surface.Volume && now > _volumeUntil) SetSurface(_beforeMenu);
 
-        if (now - _lastMonCheck > 300) { _lastMonCheck = now; _window.FollowCursorMonitor(); }
+        if (Settings.Current.MonitorIndex < 0 && now - _lastMonCheck > 300) { _lastMonCheck = now; _window.FollowCursorMonitor(); }
 
         if (!_mouseInside && _surface != Surface.Collapsed && _surface != Surface.Menu
+            && _surface != Surface.Settings
             && _leftAt != 0 && now - _leftAt > CollapseAfterMs)
             SetSurface(Surface.Collapsed);
 
-        float s = (float)_window.Scale;
+        float s = (float)_window.Scale * (float)Settings.Current.UiScale;
         var f = new IslandFrame { Surface = _surface, MenuLabels = Menu, CatPhase = now / 1000f, Logo = _logo };
 
         lock (Gate)
@@ -294,8 +308,11 @@ internal static class SkiaMode
                      : _surface == Surface.Volume ? 236 * s : 316 * s;
         float targetH = _surface == Surface.Collapsed ? 36 * s
                      : _surface == Surface.Menu ? IslandRenderer.MenuHeightPx(Menu.Length) * s
+                     : _surface == Surface.Settings ? IslandRenderer.SettingsHeightPx() * s
                      : _surface == Surface.Volume ? 44 * s : 176 * s;
-        float targetR = _surface == Surface.Collapsed ? 18 * s : _surface == Surface.Menu ? 26 * s : _surface == Surface.Volume ? 22 * s : 32 * s;
+        float targetR = _surface == Surface.Collapsed ? 18 * s : _surface == Surface.Menu ? 26 * s
+                     : _surface == Surface.Settings ? 28 * s
+                     : _surface == Surface.Volume ? 22 * s : 32 * s;
         float targetF = _surface == Surface.Collapsed || _surface == Surface.Volume ? 16 * s : 28 * s;
 
         Step(targetW, ref _mw, ref _vw, dt);
@@ -326,7 +343,17 @@ internal static class SkiaMode
         f.Hover = _mouseInside ? HitControl(_mouseX, _mouseY) : -1;
         f.MenuHover = _mouseInside && _surface == Surface.Menu ? HitMenuRow(_mouseX, _mouseY) : -1;
         _hover = f.Hover; _menuHover = f.MenuHover;
-        _window.CursorKind = (_surface == Surface.Collapsed || f.Hover >= 0 || f.MenuHover >= 0) ? 1 : 0;
+        bool settingsHot = _mouseInside && _surface == Surface.Settings && SettingsHot(_mouseX, _mouseY);
+        _window.CursorKind = (_surface == Surface.Collapsed || f.Hover >= 0 || f.MenuHover >= 0 || settingsHot) ? 1 : 0;
+
+        // Settings surface: live values + the fixed accent theme (null = follow cover art).
+        f.UiScale = Settings.Current.UiScale;
+        f.Opacity = Settings.Current.Opacity;
+        f.MonitorIndex = Settings.Current.MonitorIndex;
+        f.MonitorCount = _monCount;
+        f.Accent = Settings.Current.Accent;
+        f.AccentOverride = Settings.Current.Accent == AccentMode.Album
+            ? null : IslandRenderer.AccentColorFor(Settings.Current.Accent);
 
         var morph = new IslandMorph
         {
@@ -488,11 +515,14 @@ internal static class SkiaMode
                 case 4: Startup.IsEnabled = !Startup.IsEnabled; RebuildMenu(); SetSurface(Surface.Menu); return;
                 case 5: Settings.Current.HideWhenMusicStops = !Settings.Current.HideWhenMusicStops; Settings.Save(); RebuildMenu(); SetSurface(Surface.Menu); return;
                 case 6: Settings.Current.MediaHotkeys = !Settings.Current.MediaHotkeys; Settings.Save(); ApplyHotkeys(); RebuildMenu(); SetSurface(Surface.Menu); return;
-                case 7: SetSurface(Surface.Collapsed); return;
-                case 8: _window.Close(); return;
+                case 7: SetSurface(Surface.Settings); return;
+                case 8: SetSurface(Surface.Collapsed); return;
+                case 9: _window.Close(); return;
                 default: SetSurface(_beforeMenu); return;
             }
         }
+
+        if (_surface == Surface.Settings) { ClickSettings(x, y); return; }
 
         if (_surface == Surface.Collapsed) { SetSurface(Surface.Music); return; }
 
@@ -524,6 +554,94 @@ internal static class SkiaMode
         RebuildMenu(); SetSurface(Surface.Menu);
     }
 
+    private static void ClickSettings(float x, float y)
+    {
+        if (Inside(_hit.SettingsBack, x, y)) { SetSurface(Surface.Menu); return; }
+
+        for (int i = 0; i < _hit.SettingsSwatches.Length; i++)
+            if (Inside(_hit.SettingsSwatches[i], x, y))
+            {
+                Settings.Current.Accent = (AccentMode)i;
+                Settings.Save();
+                Log.Info($"[skia] accent {Settings.Current.Accent}");
+                SetSurface(Surface.Settings);
+                return;
+            }
+
+        if (Inside(_hit.SettingsMonMinus, x, y)) { CycleMonitor(-1); return; }
+        if (Inside(_hit.SettingsMonPlus, x, y)) { CycleMonitor(1); return; }
+    }
+
+    /// <summary>Steps the target monitor through follow-pointer (-1) and each display in turn.</summary>
+    private static void CycleMonitor(int dir)
+    {
+        _monCount = OverlayWindow.MonitorCount();
+        int next = Settings.Current.MonitorIndex + dir;
+        if (next < -1) next = _monCount - 1;
+        if (next > _monCount - 1) next = -1;
+        Settings.Current.MonitorIndex = next;
+        Settings.Save();
+        _window.PlaceOnMonitor(next);
+        Log.Info($"[skia] monitor {next} (count={_monCount})");
+        SetSurface(Surface.Settings);
+    }
+
+    // Settings sliders: click-and-drag anywhere on the row band. Values are saved on release.
+    private static bool _dragScale, _dragOpacity;
+
+    private static bool BeginSliderDrag(float x, float y)
+    {
+        if (_surface != Surface.Settings) return false;
+        if (Inside(_hit.SettingsScale, x, y)) { _dragScale = true; ApplySlider(x, y); return true; }
+        if (Inside(_hit.SettingsOpacity, x, y)) { _dragOpacity = true; ApplySlider(x, y); return true; }
+        return false;
+    }
+
+    private static void ApplySlider(float x, float y)
+    {
+        float s = (float)_window.Scale * (float)Settings.Current.UiScale;
+        float r = 5 * s;
+
+        if (_dragScale)
+        {
+            var a = _hit.SettingsScale;
+            float span = a.Width - 2 * r;
+            float v = span <= 1 ? 0 : Math.Clamp((x - a.Left - r) / span, 0f, 1f);
+            double k = Math.Round((0.8 + v * 0.6) / 0.05) * 0.05;
+            if (Math.Abs(k - Settings.Current.UiScale) < 0.001) return;
+            Settings.Current.UiScale = k;
+            _window.Resize(WinW * k, WinH * k);
+            Log.Info($"[skia] ui scale {k:0.00}");
+        }
+        else if (_dragOpacity)
+        {
+            var a = _hit.SettingsOpacity;
+            float span = a.Width - 2 * r;
+            float v = span <= 1 ? 0 : Math.Clamp((x - a.Left - r) / span, 0f, 1f);
+            double o = Math.Round((0.4 + v * 0.6) / 0.05) * 0.05;
+            if (Math.Abs(o - Settings.Current.Opacity) < 0.001) return;
+            Settings.Current.Opacity = o;
+            _window.WindowAlpha = (byte)Math.Round(255 * o);
+            Log.Info($"[skia] opacity {o:0.00}");
+        }
+    }
+
+    private static void EndSliderDrag()
+    {
+        if (!_dragScale && !_dragOpacity) return;
+        _dragScale = _dragOpacity = false;
+        Settings.Save();
+        SetSurface(Surface.Settings);
+    }
+
+    private static bool SettingsHot(float x, float y)
+    {
+        if (Inside(_hit.SettingsBack, x, y)) return true;
+        if (Inside(_hit.SettingsMonMinus, x, y) || Inside(_hit.SettingsMonPlus, x, y)) return true;
+        foreach (var r in _hit.SettingsSwatches) if (Inside(r, x, y)) return true;
+        return Inside(_hit.SettingsScale, x, y) || Inside(_hit.SettingsOpacity, x, y);
+    }
+
     private static bool Inside(SKRect r, float x, float y) => x >= r.Left && x <= r.Right && y >= r.Top && y <= r.Bottom;
 
     private static void SetSurface(Surface s)
@@ -537,10 +655,22 @@ internal static class SkiaMode
     // ────────────────────────────────────────────────────────────────── smtc/lyrics
     private static async Task RefreshAsync()
     {
-        try
+        for (int attempt = 1; attempt <= 3; attempt++)
         {
-            var t = await Smtc.GetCurrentTrackAsync();
-            if (t == null) return;
+            try { await RefreshOnceAsync(); return; }
+            catch (Exception ex)
+            {
+                Log.Warn($"[skia] refresh {attempt}/3: {ex.Message}");
+                if (attempt == 3) { Log.Error("[skia] refresh gave up: " + ex.Message); return; }
+                await Task.Delay(400 * attempt);
+            }
+        }
+    }
+
+    private static async Task RefreshOnceAsync()
+    {
+        var t = await Smtc.GetCurrentTrackAsync();
+        if (t == null) return;
 
             bool newTrack = !string.Equals(_trackKey, t.ThumbnailCacheKey ?? t.Title, StringComparison.Ordinal);
             if (newTrack)
@@ -577,9 +707,7 @@ internal static class SkiaMode
 
             if (t.Status == 2) EnsureCapture();
 
-            if (newTrack && t.HasTrack) await LoadLyricsAsync(t);
-        }
-        catch (Exception ex) { Log.Error("[skia] refresh: " + ex.Message); }
+        if (newTrack && t.HasTrack) await LoadLyricsAsync(t);
     }
 
     private static string Fmt(TimeSpan t) => t <= TimeSpan.Zero ? "--:--" : $"{(int)t.TotalMinutes:00}:{t.Seconds:00}";
@@ -641,7 +769,7 @@ internal static class SkiaMode
             LyricIndex = 20, HasLyrics = true, Playing = true, Progress = 0.42,
             Elapsed = "01:12", Duration = "03:49", LyricsReveal = 1f, LineFade = 1f,
             DotsActive = 1, Hover = 1,
-            MenuLabels = new[] { "Music", "Lyrics", "Output: Speakers", "Startup: Off", "Hide: On", "Collapse", "Exit" },
+            MenuLabels = new[] { "Music", "Lyrics", "Output: Speakers", "Startup: Off", "Hide: On", "Settings", "Collapse", "Exit" },
         };
         try
         {
@@ -720,7 +848,7 @@ internal static class SkiaMode
             Beat = 0.25f,
             LineFade = 1f,
             LyricsReveal = 1f,
-            MenuLabels = new[] { "Music", "Lyrics", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Collapse", "Exit" },
+            MenuLabels = new[] { "Music", "Lyrics", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Settings", "Collapse", "Exit" },
         };
 
         var hit = new IslandLayout();
@@ -808,7 +936,7 @@ internal static class SkiaMode
             AudioActive = true,
             Beat = 0.25f,
             LyricsOffsetMs = 500,
-            MenuLabels = new[] { "Music", "Lyrics", "Lyrics sync", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Media hotkeys: On", "Collapse", "Exit" },
+            MenuLabels = new[] { "Music", "Lyrics", "Lyrics sync", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Media hotkeys: On", "Settings", "Collapse", "Exit" },
         };
 
         f.Karaoke = 1f;
@@ -819,6 +947,14 @@ internal static class SkiaMode
         ShotOne(r, dir, WinW, WinH, s, Surface.Menu, "menu", f);
         f.Volume = 0.62f;
         ShotOne(r, dir, WinW, WinH, s, Surface.Volume, "volume", f);
+
+        // settings surface
+        f.Surface = Surface.Settings;
+        f.UiScale = 1.05; f.Opacity = 0.95; f.MonitorIndex = 0; f.MonitorCount = 2;
+        f.Accent = AccentMode.Green;
+        f.AccentOverride = IslandRenderer.AccentColorFor(AccentMode.Green);
+        ShotOne(r, dir, WinW, WinH, s, Surface.Settings, "settings", f);
+        f.AccentOverride = null;
 
         // proof that the body colour follows the cover
         ProofTint(r, dir, s, f, new SKColor(0x2E, 0x7D, 0x32), "green");
@@ -957,8 +1093,10 @@ internal static class SkiaMode
         float bodyW = surf switch { Surface.Collapsed => r.CollapsedWidthPx(f.Line, s), Surface.Music => 432 * s, Surface.Lyrics => 576 * s, Surface.Volume => 236 * s, _ => 316 * s };
         float bodyH = surf == Surface.Collapsed ? 36 * s
             : surf == Surface.Menu ? IslandRenderer.MenuHeightPx(f.MenuLabels.Length) * s
+            : surf == Surface.Settings ? IslandRenderer.SettingsHeightPx() * s
             : surf == Surface.Volume ? 44 * s : 176 * s;
-        float rb = surf == Surface.Collapsed ? 18 * s : surf == Surface.Menu ? 26 * s : surf == Surface.Volume ? 22 * s : 32 * s;
+        float rb = surf == Surface.Collapsed ? 18 * s : surf == Surface.Menu ? 26 * s
+            : surf == Surface.Settings ? 28 * s : surf == Surface.Volume ? 22 * s : 32 * s;
         float flare = (surf == Surface.Collapsed || surf == Surface.Volume) ? 16 * s : 28 * s;
 
         var info = new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);

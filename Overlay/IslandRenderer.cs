@@ -1,9 +1,10 @@
 using System.IO;
 using SkiaSharp;
+using FloatIsland.Models;
 
 namespace FloatIsland.Overlay;
 
-internal enum Surface { Collapsed, Music, Lyrics, Menu, Volume }
+internal enum Surface { Collapsed, Music, Lyrics, Menu, Volume, Settings }
 internal enum IconKind { Prev, Next, Lyrics }
 
 internal sealed class IslandFrame
@@ -50,6 +51,16 @@ internal sealed class IslandFrame
 
     /// <summary>Lyric timing nudge in ms, shown on the "Lyrics sync" menu row.</summary>
     public int LyricsOffsetMs;
+
+    /// <summary>Fixed accent colour (from the Settings surface). Null = follow the album tint.</summary>
+    public SKColor? AccentOverride;
+
+    // Settings surface state
+    public double UiScale = 1.0;
+    public double Opacity = 1.0;
+    public int MonitorIndex = -1;
+    public int MonitorCount = 1;
+    public AccentMode Accent = AccentMode.Album;
 }
 
 internal struct IslandMorph
@@ -62,6 +73,10 @@ internal sealed class IslandLayout
 {
     public SKRect Collapse, Prev, Play, Next, LyricsToggle, SeekTrack;
     public SKRect[] MenuRows = Array.Empty<SKRect>();
+
+    // Settings surface: the two sliders expose a generous hit area (visual track is thin).
+    public SKRect SettingsScale, SettingsOpacity, SettingsMonMinus, SettingsMonPlus, SettingsBack;
+    public SKRect[] SettingsSwatches = Array.Empty<SKRect>();
 }
 
 /// <summary>Skia renderer for the island surfaces (collapsed LINE, MUSIC, LYRICS, MENU, VOLUME).</summary>
@@ -130,6 +145,7 @@ internal sealed class IslandRenderer : IDisposable
             case Surface.Lyrics: DrawExpanded(c, w, s, f, hit, true); break;
             case Surface.Menu: DrawMenu(c, w, s, f, hit); break;
             case Surface.Volume: DrawVolume(c, w, s, f, hit); break;
+            case Surface.Settings: DrawSettings(c, w, s, f, hit); break;
             default: DrawCollapsed(c, w, s, f, hit); break;
         }
         c.Restore();
@@ -145,7 +161,7 @@ internal sealed class IslandRenderer : IDisposable
         float cx = w / 2f, xl = cx - bodyW / 2f, xr = cx + bodyW / 2f, ph = 36 * s;
 
         if (f.Cover != null && f.TintAmount > 0.02f)
-            Glow(c, xl + 19 * s, ph / 2f, 23 * s, Accent(f.Tint), 0.22f * f.TintAmount, s);
+            Glow(c, xl + 19 * s, ph / 2f, 23 * s, AccentOf(f), 0.22f * f.TintAmount, s);
 
         CoverCircle(c, f, xl + 19 * s, ph / 2f, 11.5f * s, s);
 
@@ -196,7 +212,7 @@ internal sealed class IslandRenderer : IDisposable
 
         if (f.TintAmount > 0.02f)
         {
-            var accentGlow = Accent(f.Tint);
+            var accentGlow = AccentOf(f);
             Glow(c, left + 32 * s, ctop + 32 * s, 78 * s, accentGlow, 0.28f * f.TintAmount, s);
             if (lyricsPage) Glow(c, right - 90 * s, bottom * 0.45f, 150 * s, accentGlow, 0.10f * f.TintAmount, s);
         }
@@ -232,7 +248,7 @@ internal sealed class IslandRenderer : IDisposable
             c.DrawText(f.Elapsed, left, py + 10 * s, sm);
             c.DrawText(f.Duration, trackR + 6 * s, py + 10 * s, sm);
         }
-        Progress(c, trackL, py + 8 * s, trackR - trackL, s, (float)f.Progress, Accent(f.Tint), f.TintAmount);
+        Progress(c, trackL, py + 8 * s, trackR - trackL, s, (float)f.Progress, AccentOf(f), f.TintAmount);
         hit.SeekTrack = new SKRect(trackL, py, trackR, py + 14 * s);
 
         float cyy = py + 14 * s + 8 * s + 18 * s, cxm = left + colW / 2f;
@@ -273,8 +289,8 @@ internal sealed class IslandRenderer : IDisposable
         c.ClipRect(new SKRect(lx - 14 * s, ctop, lx + lw, bottom - pad));
         var lyStyle = P(_bold, 17.5f * s, White);
         float rowH = 31 * s, midY = ctop + (H - 2 * pad) / 2f;
-        float slide = (1f - Math.Clamp(f.LyricsReveal, 0f, 1f)) * 14 * s;   // rows slide in from the right
-        var accent = Accent(f.Tint);
+        var slide = (1f - Math.Clamp(f.LyricsReveal, 0f, 1f)) * 14 * s;   // rows slide in from the right
+        var accent = AccentOf(f);
         for (int i = 0; i < f.Lines.Count; i++)
         {
             int d = i - f.LyricIndex;
@@ -348,7 +364,7 @@ internal sealed class IslandRenderer : IDisposable
 
         var label = P(_semi, 13 * s, new SKColor(255, 255, 255, 235));
         var value = P(_med, 11.5f * s, Faint);
-        var accent = f.TintAmount > 0.05f ? Accent(f.Tint) : new SKColor(255, 255, 255, 205);
+        var accent = f.TintAmount > 0.05f ? AccentOf(f) : new SKColor(255, 255, 255, 205);
 
         for (int i = 0; i < labels.Length; i++)
         {
@@ -399,7 +415,8 @@ internal sealed class IslandRenderer : IDisposable
                 string shown = Clip(right, value, maxW);
                 c.DrawText(shown, row.Right - 8 * s - value.MeasureText(shown), Baseline(value, row.MidY), value);
             }
-            else if (text.Equals("Music", StringComparison.Ordinal) || text.Equals("Lyrics", StringComparison.Ordinal))
+            else if (text.Equals("Music", StringComparison.Ordinal) || text.Equals("Lyrics", StringComparison.Ordinal)
+                  || text.Equals("Settings", StringComparison.Ordinal))
             {
                 using var ch = new SKPaint
                 {
@@ -455,6 +472,148 @@ internal sealed class IslandRenderer : IDisposable
         string label = f.VolumeMuted ? "Mute" : $"{Math.Round(f.Volume * 100)}%";
         c.DrawText(label, bx1 + 14 * s, Baseline(pct, cy), pct);
     }
+
+    /// <summary>Settings body height (in DIP): 2 sliders, an accent strip, a monitor stepper, a Back row.</summary>
+    public static float SettingsHeightPx() => 232f;
+
+    // ---- SETTINGS (316 x SettingsHeightPx)
+    private void DrawSettings(SKCanvas c, int w, float s, IslandFrame f, IslandLayout hit)
+    {
+        float bodyW = 316 * s, H = SettingsHeightPx() * s;
+        float cx = w / 2f, xl = cx - bodyW / 2f, xr = cx + bodyW / 2f;
+        hit.Collapse = new SKRect(xl, 0, xr, H);
+
+        float pad = 14 * s;
+        float ix0 = xl + pad, ix1 = xr - pad;
+
+        var title = P(_bold, 13 * s, White);
+        c.DrawText("Settings", ix0, pad + 12 * s, title);
+
+        var ver = P(_semi, 9 * s, new SKColor(255, 255, 255, 145));
+        string vt = VersionLabel();
+        float vw = ver.MeasureText(vt);
+        var vr = new SKRect(ix1 - vw - 14 * s, pad + 4 * s, ix1, pad + 20 * s);
+        using (var vbg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x12) })
+            c.DrawRoundRect(vr, 8 * s, 8 * s, vbg);
+        c.DrawText(vt, vr.Left + 7 * s, Baseline(ver, vr.MidY), ver);
+
+        float divY = pad + 24 * s;
+        using (var div = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x14), StrokeWidth = 1 * s })
+            c.DrawLine(ix0, divY, ix1, divY, div);
+
+        var label = P(_semi, 11.5f * s, new SKColor(255, 255, 255, 225));
+        var accent = AccentOf(f);
+
+        float y = divY + 10 * s;
+        y = SliderRow(c, "Scale", $"{f.UiScale:0.00}\u00d7", ix0, ix1, y, s,
+            (float)((f.UiScale - 0.8) / 0.6), accent, hit, true);
+        y = SliderRow(c, "Opacity", $"{Math.Round(f.Opacity * 100)}%", ix0, ix1, y, s,
+            (float)((f.Opacity - 0.4) / 0.6), accent, hit, false);
+
+        // accent swatches: Album follows the cover, the rest are fixed themes
+        float sy = y + 2 * s;
+        c.DrawText("Accent", ix0, Baseline(label, sy + 9 * s), label);
+        var modes = (AccentMode[])Enum.GetValues(typeof(AccentMode));
+        float sw = 15 * s, gap = 7 * s;
+        float sx0 = ix1 - (modes.Length * sw + (modes.Length - 1) * gap);
+        float scy = sy + 9 * s;
+        hit.SettingsSwatches = new SKRect[modes.Length];
+        for (int i = 0; i < modes.Length; i++)
+        {
+            float scx = sx0 + i * (sw + gap) + sw / 2f;
+            hit.SettingsSwatches[i] = new SKRect(scx - sw / 2f, scy - sw / 2f, scx + sw / 2f, scy + sw / 2f);
+
+            if (modes[i] == AccentMode.Album)
+            {
+                using var ring = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f * s, Color = new SKColor(255, 255, 255, 0x66) };
+                c.DrawCircle(scx, scy, sw / 2f, ring);
+                using var dot = new SKPaint { IsAntialias = true, Color = f.TintAmount > 0.05f ? AccentOf(f) : new SKColor(255, 255, 255, 0x40) };
+                c.DrawCircle(scx, scy, sw / 2f - 3 * s, dot);
+            }
+            else
+            {
+                using var fill = new SKPaint { IsAntialias = true, Color = AccentColorFor(modes[i]) };
+                c.DrawCircle(scx, scy, sw / 2f, fill);
+            }
+
+            if (modes[i] == f.Accent)
+                using (var sel = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2 * s, Color = White })
+                    c.DrawCircle(scx, scy, sw / 2f + 2.5f * s, sel);
+        }
+
+        // monitor stepper
+        float my = sy + 30 * s;
+        float mcy = my + 8 * s;
+        c.DrawText("Monitor", ix0, Baseline(label, mcy), label);
+        float plusX = ix1 - 10 * s, minusX = ix1 - 96 * s;
+        SmallStep(c, minusX, mcy, 8 * s, false, s, false);
+        SmallStep(c, plusX, mcy, 8 * s, true, s, false);
+        hit.SettingsMonMinus = new SKRect(minusX - 12 * s, mcy - 12 * s, minusX + 12 * s, mcy + 12 * s);
+        hit.SettingsMonPlus = new SKRect(plusX - 12 * s, mcy - 12 * s, plusX + 12 * s, mcy + 12 * s);
+        var monVal = P(_semi, 11.5f * s, f.MonitorIndex < 0 ? Faint : White);
+        string mt = f.MonitorIndex < 0 ? "Follow pointer" : $"{f.MonitorIndex + 1} / {f.MonitorCount}";
+        c.DrawText(mt, (minusX + plusX) / 2f - monVal.MeasureText(mt) / 2f, Baseline(monVal, mcy), monVal);
+
+        // Back
+        float by = my + 30 * s;
+        var back = new SKRect(ix0, by, ix1, by + 26 * s);
+        hit.SettingsBack = back;
+        using (var bb = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x10) })
+            c.DrawRoundRect(back, 8 * s, 8 * s, bb);
+        using (var ch = new SKPaint
+        {
+            IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.6f * s,
+            StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round, Color = new SKColor(255, 255, 255, 200)
+        })
+        {
+            float ax = back.Left + 14 * s, ay = back.MidY;
+            c.DrawLine(ax + 4 * s, ay - 4 * s, ax, ay, ch);
+            c.DrawLine(ax, ay, ax + 4 * s, ay + 4 * s, ch);
+        }
+        var backT = P(_semi, 11.5f * s, new SKColor(255, 255, 255, 220));
+        c.DrawText("Back", back.Left + 26 * s, Baseline(backT, back.MidY), backT);
+    }
+
+    /// <summary>A label + value line over a draggable track; returns the y below it.</summary>
+    private float SliderRow(SKCanvas c, string name, string valueText, float ix0, float ix1,
+        float y, float s, float v01, SKColor accent, IslandLayout hit, bool isScale)
+    {
+        var label = P(_semi, 11.5f * s, new SKColor(255, 255, 255, 225));
+        var value = P(_med, 11.5f * s, White);
+        c.DrawText(name, ix0, Baseline(label, y + 8 * s), label);
+        c.DrawText(valueText, ix1 - value.MeasureText(valueText), Baseline(value, y + 8 * s), value);
+
+        float trackY = y + 21 * s;
+        float r = 5 * s;
+        v01 = Math.Clamp(v01, 0f, 1f);
+        var track = new SKRect(ix0 + r, trackY - 2.5f * s, ix1 - r, trackY + 2.5f * s);
+        using (var bg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 0x1E) })
+            c.DrawRoundRect(track, 2.5f * s, 2.5f * s, bg);
+
+        float kx = track.Left + v01 * track.Width;
+        using (var fill = new SKPaint { IsAntialias = true, Color = accent.WithAlpha(230) })
+            c.DrawRoundRect(new SKRect(track.Left, track.Top, kx, track.Bottom), 2.5f * s, 2.5f * s, fill);
+        using (var kb = new SKPaint { IsAntialias = true, Color = new SKColor(10, 11, 14) })
+            c.DrawCircle(kx, trackY, r, kb);
+        using (var kr = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.6f * s, Color = White })
+            c.DrawCircle(kx, trackY, r - 1 * s, kr);
+
+        // rows are thin; a drag anywhere across the track band (or the label line) takes hold
+        var area = new SKRect(ix0, y, ix1, trackY + 12 * s);
+        if (isScale) hit.SettingsScale = area; else hit.SettingsOpacity = area;
+        return trackY + 14 * s;
+    }
+
+    /// <summary>Fixed theme colours for the Settings accent picker.</summary>
+    internal static SKColor AccentColorFor(AccentMode m) => m switch
+    {
+        AccentMode.Green => new SKColor(0x1E, 0xD7, 0x60),
+        AccentMode.Blue => new SKColor(0x5B, 0x8D, 0xEF),
+        AccentMode.Pink => new SKColor(0xF5, 0x6F, 0xA1),
+        AccentMode.Amber => new SKColor(0xF5, 0xA6, 0x23),
+        AccentMode.Mono => new SKColor(0xC8, 0xCC, 0xD4),
+        _ => new SKColor(0x9F, 0xB4, 0xFF),
+    };
 
     // ---- primitives
     // Paints and the body shaders are cached: creating them per frame at 60 fps was the
@@ -901,6 +1060,9 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
 
     // ---- finishing-touch primitives
 
+    /// <summary>The UI accent for a frame: the fixed theme colour, or one lifted from the cover.</summary>
+    private static SKColor AccentOf(IslandFrame f) => f.AccentOverride ?? Accent(f.Tint);
+
     /// <summary>Lifts a cover colour into a vivid, readable accent for small UI details.</summary>
     private static SKColor Accent(SKColor c)
     {
@@ -1026,7 +1188,7 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
         return (ms > 0 ? "+" : "\u2212") + (Math.Abs(ms) / 1000.0).ToString("0.0") + " s";
     }
 
-    private enum MenuIcon { None, Music, Lyrics, Sync, Output, Startup, Hide, Hotkeys, Collapse, Exit }
+    private enum MenuIcon { None, Music, Lyrics, Sync, Output, Startup, Hide, Hotkeys, Settings, Collapse, Exit }
 
     private static MenuIcon MenuIconFor(string text)
     {
@@ -1034,6 +1196,7 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
         if (text.StartsWith("Music", StringComparison.Ordinal)) return MenuIcon.Music;
         if (text.StartsWith("Lyrics", StringComparison.Ordinal)) return MenuIcon.Lyrics;
         if (text.StartsWith("Media", StringComparison.Ordinal)) return MenuIcon.Hotkeys;
+        if (text.StartsWith("Settings", StringComparison.Ordinal)) return MenuIcon.Settings;
         if (text.StartsWith("Output", StringComparison.Ordinal)) return MenuIcon.Output;
         if (text.StartsWith("Launch", StringComparison.Ordinal)) return MenuIcon.Startup;
         if (text.StartsWith("Hide", StringComparison.Ordinal)) return MenuIcon.Hide;
@@ -1129,6 +1292,19 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
                 c.DrawLine(cx, cy - 4 * s, cx + 6 * s, cy + 2 * s, stroke);
                 c.DrawLine(cx - 6 * s, cy + 7 * s, cx + 6 * s, cy + 7 * s, stroke);
                 break;
+
+            case MenuIcon.Settings:
+            {
+                c.DrawCircle(cx, cy, 3 * s, stroke);
+                for (int k = 0; k < 6; k++)
+                {
+                    double ang = k * Math.PI / 3.0;
+                    float dx = (float)Math.Cos(ang), dy = (float)Math.Sin(ang);
+                    c.DrawLine(cx + dx * 3.4f * s, cy + dy * 3.4f * s,
+                               cx + dx * 6.6f * s, cy + dy * 6.6f * s, stroke);
+                }
+                break;
+            }
 
             case MenuIcon.Exit:
                 c.DrawArc(new SKRect(cx - 6 * s, cy - 6 * s, cx + 6 * s, cy + 7 * s), -40, 260, false, stroke);

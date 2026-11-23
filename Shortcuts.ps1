@@ -20,9 +20,9 @@ function New-Lnk($path, $arguments) {
     Write-Host "shortcut: $path"
 }
 
-New-Lnk "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Float Island.lnk" '--skia'
-New-Lnk (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Float Island.lnk') '--skia'
-if ($Startup) { New-Lnk (Join-Path ([Environment]::GetFolderPath('Startup')) 'Float Island.lnk') '--skia' }
+New-Lnk "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Float Island.lnk" ''
+New-Lnk (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Float Island.lnk') ''
+if ($Startup) { New-Lnk (Join-Path ([Environment]::GetFolderPath('Startup')) 'Float Island.lnk') '' }
 
 Write-Host ""
 Write-Host "Done. Launch 'Float Island' from the Start Menu or Desktop."

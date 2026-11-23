@@ -50,7 +50,25 @@ public sealed class AppSettings
     /// <summary>Hide the island while a fullscreen app (game, fullscreen video) is in the foreground.</summary>
     [JsonPropertyName("hideWhenFullscreen")]
     public bool HideWhenFullscreen { get; set; } = true;
+
+    /// <summary>Overall size multiplier for the island (0.8 - 1.4). 1.0 = the designed size.</summary>
+    [JsonPropertyName("uiScale")]
+    public double UiScale { get; set; } = 1.0;
+
+    /// <summary>Whole-island opacity (0.4 - 1.0).</summary>
+    [JsonPropertyName("opacity")]
+    public double Opacity { get; set; } = 1.0;
+
+    /// <summary>Accent colour override; <see cref="AccentMode.Album"/> follows the cover art.</summary>
+    [JsonPropertyName("accent")]
+    public AccentMode Accent { get; set; } = AccentMode.Album;
+
+    /// <summary>Monitor to sit on: -1 follows the pointer, otherwise a 0-based monitor index.</summary>
+    [JsonPropertyName("monitorIndex")]
+    public int MonitorIndex { get; set; } = -1;
 }
+
+public enum AccentMode { Album = 0, Green = 1, Blue = 2, Pink = 3, Amber = 4, Mono = 5 }
 
 public enum HorizontalAlign { Left = 0, Center = 1, Right = 2 }
 

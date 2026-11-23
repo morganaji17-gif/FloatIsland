@@ -22,6 +22,12 @@ internal sealed class OverlayWindow : IDisposable
     /// (false skips the composited blit).</summary>
     public Func<bool>? OnFrame;
     public Action<int, int>? OnLeftClick;
+    /// <summary>Mouse-down. Return true to capture a drag (e.g. a slider); then
+    /// <see cref="OnDrag"/> fires on movement and <see cref="OnLeftUp"/> on release,
+    /// and <see cref="OnLeftClick"/> is suppressed for that press.</summary>
+    public Func<float, float, bool>? OnLeftDown;
+    public Action<float, float>? OnDrag;
+    public Action? OnLeftUp;
     public Action? OnRightClick;
     public Action<int, int>? OnMouseMove;
     public Action? OnMouseLeave;
@@ -80,13 +86,17 @@ internal sealed class OverlayWindow : IDisposable
     private const byte AC_SRC_OVER = 0x00, AC_SRC_ALPHA = 0x01;
     private const uint ULW_ALPHA = 0x02;
     private const uint WM_TIMER = 0x0113, WM_DESTROY = 0x0002, WM_DISPLAYCHANGE = 0x007E, WM_NCHITTEST = 0x0084, WM_HOTKEY = 0x0312;
-    private const uint WM_LBUTTONDOWN = 0x0201, WM_RBUTTONUP = 0x0205, WM_MOUSEMOVE = 0x0200, WM_MOUSELEAVE = 0x02A3, WM_SETCURSOR = 0x0020;
+    private const uint WM_LBUTTONDOWN = 0x0201, WM_RBUTTONUP = 0x0205, WM_MOUSEMOVE = 0x0200, WM_MOUSELEAVE = 0x02A3, WM_SETCURSOR = 0x0020, WM_LBUTTONUP = 0x0202;
     private const int SW_SHOWNOACTIVATE = 4;
 
     private bool _trackingLeave;
+    private bool _dragging;
 
     /// <summary>0 = arrow, 1 = hand. Set by the host from the current hover state.</summary>
     public int CursorKind;
+
+    /// <summary>Whole-island opacity, folded into the layered-window blend (255 = opaque).</summary>
+    public byte WindowAlpha = 255;
 
     private void TrackLeave()
     {
@@ -237,11 +247,36 @@ internal sealed class OverlayWindow : IDisposable
         Present();
     }
 
-    public void PlaceTopCentre()
+    public void PlaceTopCentre() => PlaceAt(MonitorForCursor());
+
+    /// <summary>Sits the island on a specific monitor (0-based). Falls back to the pointer's
+    /// monitor when <paramref name="index"/> is out of range or negative.</summary>
+    public void PlaceOnMonitor(int index)
+    {
+        var mons = Monitors();
+        PlaceAt(index >= 0 && index < mons.Count ? mons[index] : MonitorForCursor());
+    }
+
+    public static int MonitorCount() => Monitors().Count;
+
+    public static List<IntPtr> Monitors()
+    {
+        var list = new List<IntPtr>();
+        MonitorEnumProc cb = (IntPtr m, IntPtr hdc, ref RECT r, IntPtr data) => { list.Add(m); return true; };
+        EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, cb, IntPtr.Zero);
+        return list;
+    }
+
+    private static IntPtr MonitorForCursor()
     {
         GetCursorPos(out var cur);
         var mon = MonitorFromPoint(cur, 2 /*MONITOR_DEFAULTTONEAREST*/);
-        if (mon == IntPtr.Zero) mon = MonitorFromPoint(new POINT { X = 0, Y = 0 }, 1 /*PRIMARY*/);
+        return mon == IntPtr.Zero ? MonitorFromPoint(new POINT { X = 0, Y = 0 }, 1 /*PRIMARY*/) : mon;
+    }
+
+    private void PlaceAt(IntPtr mon)
+    {
+        if (mon == IntPtr.Zero) return;
         _lastMon = mon;
 
         var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
@@ -317,7 +352,7 @@ internal sealed class OverlayWindow : IDisposable
         var dst = new POINT { X = rect.Left, Y = rect.Top };
         var size = new SIZE { cx = Width, cy = Height };
         var src = new POINT { X = 0, Y = 0 };
-        var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, SourceConstantAlpha = 255, AlphaFormat = AC_SRC_ALPHA };
+        var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, SourceConstantAlpha = WindowAlpha, AlphaFormat = AC_SRC_ALPHA };
         UpdateLayeredWindow(Handle, screenDc, ref dst, ref size, _memDc, ref src, 0, ref blend, ULW_ALPHA);
         ReleaseDC(IntPtr.Zero, screenDc);
 
@@ -381,11 +416,28 @@ internal sealed class OverlayWindow : IDisposable
                     if (self.OnFrame?.Invoke() == true) self.Present();
                     return IntPtr.Zero;
                 case WM_LBUTTONDOWN:
-                    self.OnLeftClick?.Invoke((short)(lParam.ToInt64() & 0xFFFF), (short)((lParam.ToInt64() >> 16) & 0xFFFF));
+                {
+                    int x = (short)(lParam.ToInt64() & 0xFFFF), y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+                    self._dragging = self.OnLeftDown?.Invoke(x, y) ?? false;
+                    if (self._dragging) SetCapture(hWnd);
+                    else self.OnLeftClick?.Invoke(x, y);
                     return IntPtr.Zero;
+                }
                 case WM_MOUSEMOVE:
                     self.TrackLeave();
-                    self.OnMouseMove?.Invoke((short)(lParam.ToInt64() & 0xFFFF), (short)((lParam.ToInt64() >> 16) & 0xFFFF));
+                    {
+                        int x = (short)(lParam.ToInt64() & 0xFFFF), y = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+                        self.OnMouseMove?.Invoke(x, y);
+                        if (self._dragging) self.OnDrag?.Invoke(x, y);
+                    }
+                    return IntPtr.Zero;
+                case WM_LBUTTONUP:
+                    if (self._dragging)
+                    {
+                        self._dragging = false;
+                        ReleaseCapture();
+                        self.OnLeftUp?.Invoke();
+                    }
                     return IntPtr.Zero;
                 case WM_MOUSELEAVE:
                     self._trackingLeave = false;
@@ -498,6 +550,8 @@ internal sealed class OverlayWindow : IDisposable
     [DllImport("user32.dll")] private static extern IntPtr GetShellWindow();
     [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr h, uint flags);
+    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdcMonitor, ref RECT lprcMonitor, IntPtr dwData);
+    [DllImport("user32.dll")] private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorEnumProc proc, IntPtr data);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
@@ -534,6 +588,8 @@ internal sealed class OverlayWindow : IDisposable
     [DllImport("user32.dll")] private static extern bool TrackMouseEvent(ref TRACKMOUSEEVENT tme);
     [DllImport("user32.dll")] private static extern IntPtr LoadCursor(IntPtr hInstance, uint lpCursorName);
     [DllImport("user32.dll")] private static extern IntPtr SetCursor(IntPtr cursor);
+    [DllImport("user32.dll")] private static extern IntPtr SetCapture(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
 
     [StructLayout(LayoutKind.Sequential)]
     private struct TRACKMOUSEEVENT
