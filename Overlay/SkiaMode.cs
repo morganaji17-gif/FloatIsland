@@ -115,6 +115,8 @@ internal static class SkiaMode
         _window.OnRightClick = () => { _beforeMenu = _surface; SetSurface(Surface.Menu); };
         _window.OnMouseMove = (x, y) => { _mouseInside = true; _mouseX = x; _mouseY = y; };
         _window.OnMouseLeave = () => { _mouseInside = false; _leftAt = Environment.TickCount64; _hover = -1; _menuHover = -1; };
+        // Only the body is clickable; the rest of the 900x300 surface lets clicks through.
+        _window.HitTest = (x, y) => _hit.Collapse.Width > 0 && Inside(_hit.Collapse, x, y);
 
         Menu[0] = "Music";
         Menu[1] = "Lyrics";
@@ -141,14 +143,20 @@ internal static class SkiaMode
                 smtc.PlaybackChanged += (_, _) => _ = RefreshAsync();
                 smtc.SessionChanged += (_, _) => _ = RefreshAsync();
                 await RefreshAsync();
+                if (!smtc.IsSpotifyActive)
+                    Log.Info("[skia] no Spotify session yet - launch the Spotify desktop app. " +
+                             "The island peeks for a few seconds at startup, then stays hidden until playback.");
             }
             catch (Exception ex) { Log.Error("[skia] smtc: " + ex.Message); }
         });
 
+        // Peek on launch so the user can see the island exists even before Spotify plays.
+        _forceShowUntil = Environment.TickCount64 + 4500;
         _window.Show();
         _window.StartTimer(TimerMs);
-        _window.EnableTray(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"), "Float Island");
+        _window.EnableTray(Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico"), "Float Island - left click to show");
         _window.OnTrayShow = () => { _forceShowUntil = Environment.TickCount64 + 5000; SetSurface(Surface.Collapsed); };
+        _window.OnShowRequested = () => { _forceShowUntil = Environment.TickCount64 + 6000; SetSurface(Surface.Collapsed); };
         _window.OnTrayExit = () => _window.Close();
         Log.Info("[skia] overlay running (skia path)");
         OverlayWindow.RunLoop();
@@ -167,13 +175,22 @@ internal static class SkiaMode
         TickIndex();
 
         // Show/hide with a fade + shrink (instant ShowWindow on start, animated on pause).
-        bool want = _playing || (!Settings.Current.HideWhenMusicStops && _hasTrack) || now < _forceShowUntil;
-        if (want && !_shown) { _shown = true; _visAlpha = 0f; _window.Show2(); }
+        bool forced = now < _forceShowUntil;
+        bool want = _playing || (!Settings.Current.HideWhenMusicStops && _hasTrack) || forced;
+        if (want && !_shown)
+        {
+            _shown = true; _visAlpha = 0f; _window.Show2();
+            Log.Info($"[skia] show (playing={_playing} track={_hasTrack} forced={forced})");
+        }
         if (_shown)
         {
             _visAlpha = want ? Math.Min(1f, _visAlpha + dt / 0.22f)
                              : Math.Max(0f, _visAlpha - dt / 0.18f);
-            if (!want && _visAlpha <= 0.001f) { _window.Hide(); _shown = false; }
+            if (!want && _visAlpha <= 0.001f)
+            {
+                _window.Hide(); _shown = false;
+                Log.Info("[skia] hide (idle: nothing playing)");
+            }
         }
         if (!_shown) { _window.SetFrameInterval(200); return false; }
         _visScale = 0.70f + 0.30f * _visAlpha;
@@ -200,9 +217,11 @@ internal static class SkiaMode
             f.Lines = new List<string>(Lines);
             f.LyricIndex = _index;
             f.LyricLine = _index >= 0 && _index < Lines.Count ? Lines[_index] : "";
-            f.Line = string.IsNullOrEmpty(f.LyricLine)
-                ? (string.IsNullOrWhiteSpace(_artist) ? _title : _title + " \u2014 " + _artist)
-                : f.LyricLine;
+            f.Line = !string.IsNullOrEmpty(f.LyricLine)
+                ? f.LyricLine
+                : !string.IsNullOrWhiteSpace(_title)
+                    ? (string.IsNullOrWhiteSpace(_artist) ? _title : _title + " \u2014 " + _artist)
+                    : "Waiting for Spotify\u2026";
             if (_playing) _capture?.ReadSnapshot(Levels);
             f.Bars = Levels.Bars;
             f.AudioActive = _playing && Levels.Active;
@@ -588,6 +607,87 @@ internal static class SkiaMode
             double ms = sw.Elapsed.TotalMilliseconds / frames;
             Log.Info($"[bench] {surf}: {ms:F3} ms/frame -> {ms * 60 / 10:F2}% of one core at 60 fps");
         }
+    }
+
+    /// <summary>Live self-check: <c>--skia-demo [seconds]</c>. Opens the real layered window on
+    /// the desktop, draws a synthetic player for a few seconds, logs whether the window is
+    /// visible and whether the bitmap actually carries opaque pixels, then closes. Proves the
+    /// on-screen pipeline without needing Spotify or any media session.</summary>
+    public static void LiveDemo(int seconds)
+    {
+        seconds = Math.Clamp(seconds, 2, 30);
+        using var window = new OverlayWindow(WinW, WinH);
+        using var renderer = new IslandRenderer(Path.Combine(AppContext.BaseDirectory, "Assets", "Fonts"));
+
+        SKImage? logo = null;
+        try
+        {
+            var lp = Path.Combine(AppContext.BaseDirectory, "Assets", "logo.png");
+            if (File.Exists(lp)) logo = SKImage.FromEncodedData(File.ReadAllBytes(lp));
+        }
+        catch { }
+
+        using var cover = MakeDemoCover();
+        float s = (float)window.Scale;
+
+        var f = new IslandFrame
+        {
+            Surface = Surface.Music,
+            Title = "See You Again",
+            Artist = "Tyler, The Creator",
+            Cover = cover,
+            Logo = logo,
+            Line = "And I'll tell you all about it when I see you again",
+            LyricLine = "And I'll tell you all about it",
+            Playing = true,
+            HasTrack = true,
+            Progress = 0.42,
+            Elapsed = "01:12",
+            Duration = "03:49",
+            HasLyrics = true,
+            Tint = new SKColor(0x2E, 0x7D, 0x32),
+            TintAmount = 0.45f,
+            Bars = new[] { 0.22f, 0.38f, 0.61f, 0.48f, 0.76f, 0.92f, 0.67f, 0.54f, 0.81f, 0.63f, 0.44f, 0.58f, 0.72f, 0.36f, 0.51f, 0.28f },
+            AudioActive = true,
+            Beat = 0.25f,
+            LineFade = 1f,
+            LyricsReveal = 1f,
+            MenuLabels = new[] { "Music", "Lyrics", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Collapse", "Exit" },
+        };
+
+        var hit = new IslandLayout();
+        window.HitTest = (x, y) => hit.Collapse.Width > 0 && Inside(hit.Collapse, x, y);
+        var morph = new IslandMorph { BodyW = 432 * s, BodyH = 176 * s, Radius = 32 * s, Flare = 28 * s, Alpha = 1f };
+        long start = Environment.TickCount64;
+        int frames = 0;
+        int probeX = window.Width / 2, probeY = (int)(90 * s);
+
+        window.OnFrame = () =>
+        {
+            float t = (Environment.TickCount64 - start) / 1000f;
+            f.CatPhase = t;
+            f.Karaoke = 0.5f + 0.5f * (float)Math.Sin(t * 1.6);
+
+            var info = new SKImageInfo(window.Width, window.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            using var surface = SKSurface.Create(info, window.Bits, window.Stride);
+            if (surface == null) { Log.Error("[demo] SKSurface.Create failed"); return false; }
+            renderer.Render(surface.Canvas, window.Width, window.Height, s, f, hit, morph);
+            surface.Canvas.Flush();
+            frames++;
+
+            if (frames == 20)
+                Log.Info($"[demo] live window visible={window.IsVisible} size={window.Width}x{window.Height} " +
+                         $"centreAlpha={window.SampleAlpha(probeX, probeY)}");
+            return true;
+        };
+
+        window.Show();
+        window.StartTimer(TimerMs);
+        using var closer = new System.Threading.Timer(_ => window.PostClose(), null, seconds * 1000, Timeout.Infinite);
+        OverlayWindow.RunLoop();
+
+        Log.Info($"[demo] finished after {frames} frames ({seconds}s) - if the island was on screen, the live path works");
+        window.Dispose();
     }
 
     // ─────────────────────────────────────────── offline self-check (--skia-shot)

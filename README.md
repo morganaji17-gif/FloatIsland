@@ -72,6 +72,25 @@ every transition - pill to player, player to lyrics, menu open - is one continuo
 - **App**: Spotify Desktop for Windows
 - **Runtime**: .NET 10 Desktop Runtime (x64) for the framework-dependent build
 
+## Nothing appears? (troubleshooting)
+
+Float Island is built to stay invisible until there is something to show, so "I ran it and
+nothing happened" is usually one of these, in order:
+
+1. **It is hidden until Spotify plays.** Launch it and you'll see a *"Waiting for
+   Spotify…"* pill for ~4.5 s; after that it hides itself until playback starts. Open the
+   **Spotify desktop** app and press play.
+2. **Force it up:** left-click the tray icon, or **run the app a second time** — a second
+   launch now asks the running island to show itself instead of silently exiting.
+3. **Prove the renderer works, without Spotify:** `FloatIsland.exe --skia-demo` draws a
+   sample player for a few seconds. If that appears, detection is the only question.
+4. **Antivirus.** Unsigned builds are blocked by behaviour-based AV. On a machine with
+   **Trend Micro** the exe can refuse to start (`Access is denied`, nothing shows) even
+   though it ran yesterday. Add a folder exception (see [SECURITY.md](SECURITY.md)) or
+   build from source.
+5. **Check the log:** `%APPDATA%\FloatIsland\Logs\floatisland_YYYYMMDD.log`. It records
+   every show/hide, the SMTC session it found, and whether audio capture started.
+
 ## Antivirus and SmartScreen
 
 Float Island is unsigned, and it does a few things that look suspicious to a heuristic
@@ -153,8 +172,11 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 - The expanded panel collapses again ~1.5 s after the pointer leaves.
 - The island is hidden while playback is not running, and fades out rather than
-  disappearing instantly.
+  disappearing instantly. It peeks for ~4.5 s on launch so you can see it exists.
+- Only the island body is clickable: the rest of the overlay surface is click-through, so
+  it never swallows clicks meant for the desktop underneath.
 - The menu switches are the settings themselves - click a row to toggle it in place.
+- Launching the app while it is already running asks the existing island to show.
 
 ## Lyrics
 
@@ -252,6 +274,7 @@ The executable has inert diagnostic modes (nothing runs unless invoked):
 FloatIsland.exe --selftest                    # pure-logic assertions; exits non-zero on failure
 FloatIsland.exe --skia-shot                   # render every surface to PNG in .\shots\ and log its geometry
 FloatIsland.exe --skia-bench [frames]         # per-frame render cost for collapsed / player / lyrics
+FloatIsland.exe --skia-demo [seconds]         # show a live sample player (no Spotify needed)
 FloatIsland.exe --smtc-probe [seconds]        # list SMTC sessions + Spotify metadata
 FloatIsland.exe --smtc-cmd play|pause|next|prev|seek
 FloatIsland.exe --selftest-capture spotify|<pid> [s]

@@ -32,10 +32,16 @@ spyware pattern to a heuristic engine. That is why it is flagged.
 1. **Verify before trusting.** Build from source (see `CONTRIBUTING.md`) or compare the
    release zip against the `SHA256SUMS.txt` attached to the same release:
    ```powershell
-   Get-FileHash SonoIsland-win-x64.zip -Algorithm SHA256
+   Get-FileHash FloatIsland-win-x64.zip -Algorithm SHA256
    ```
 2. **Whitelist the folder** in your AV product (e.g. Trend Micro:
    *Settings -> Exceptions -> Add folder*), or pause protection while installing.
+
+   Symptom of a block: launching `FloatIsland.exe` does **nothing at all** - no window,
+   no tray icon - and if you run it from a terminal you get `Access is denied`. That is the
+   AV refusing to start the process, not a crash. A block can also appear only *after* a
+   rebuild, because the scanner re-evaluates the new, unsigned binary. `dotnet
+   FloatIsland.dll --selftest` still works in that case (the AV targets the apphost exe).
 3. **Report the false positive** to the vendor so everyone benefits:
    - Microsoft: <https://www.microsoft.com/wdsi/filesubmission>
    - Trend Micro: <https://www.trendmicro.com/en_us/about/legal/report-false-positive.html>

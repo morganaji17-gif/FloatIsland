@@ -27,6 +27,12 @@ internal sealed class OverlayWindow : IDisposable
     public Action? OnMouseLeave;
     public Action? OnTrayShow;
     public Action? OnTrayExit;
+    /// <summary>Raised when a second launch (or another process) asks this island to show.</summary>
+    public Action? OnShowRequested;
+
+    /// <summary>Client-space hit test. When it returns false the window reports HTTRANSPARENT
+    /// so clicks pass through the empty part of the 900x300 surface to whatever is behind it.</summary>
+    public Func<int, int, bool>? HitTest;
 
     private IntPtr _memDc, _dib, _oldBmp;
     private bool _disposed;
@@ -38,7 +44,7 @@ internal sealed class OverlayWindow : IDisposable
     private const uint WS_EX_TOPMOST = 0x00000008;
     private const byte AC_SRC_OVER = 0x00, AC_SRC_ALPHA = 0x01;
     private const uint ULW_ALPHA = 0x02;
-    private const uint WM_TIMER = 0x0113, WM_DESTROY = 0x0002, WM_DISPLAYCHANGE = 0x007E;
+    private const uint WM_TIMER = 0x0113, WM_DESTROY = 0x0002, WM_DISPLAYCHANGE = 0x007E, WM_NCHITTEST = 0x0084;
     private const uint WM_LBUTTONDOWN = 0x0201, WM_RBUTTONUP = 0x0205, WM_MOUSEMOVE = 0x0200, WM_MOUSELEAVE = 0x02A3, WM_SETCURSOR = 0x0020;
     private const int SW_SHOWNOACTIVATE = 4;
 
@@ -57,6 +63,32 @@ internal sealed class OverlayWindow : IDisposable
 
     public void Hide() => ShowWindow(Handle, 0);
     public void Show2() => ShowWindow(Handle, SW_SHOWNOACTIVATE);
+    public bool IsVisible => Handle != IntPtr.Zero && IsWindowVisible(Handle);
+
+    /// <summary>Posts WM_CLOSE, used by the live demo/self-check to end its own message loop.</summary>
+    public void PostClose()
+    {
+        if (Handle != IntPtr.Zero) PostMessage(Handle, 0x0010 /*WM_CLOSE*/, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    /// <summary>Reads the alpha of one pixel in the DIB (used by the live self-check).</summary>
+    public byte SampleAlpha(int x, int y)
+    {
+        if (Bits == IntPtr.Zero || x < 0 || y < 0 || x >= Width || y >= Height) return 0;
+        return Marshal.ReadByte(Bits, y * Stride + x * 4 + 3);
+    }
+
+    // --------------------------------------------------------- cross-instance show
+    public const uint WM_SHOW_REQUESTED = 0x8002; // WM_APP + 2
+
+    /// <summary>Finds an already-running Skia island window, if any.</summary>
+    public static IntPtr FindExisting() => FindWindow("FloatIslandSkia", "FloatIsland");
+
+    /// <summary>Asks a running island (in another process) to show itself.</summary>
+    public static void RequestShow(IntPtr hwnd)
+    {
+        if (hwnd != IntPtr.Zero) PostMessage(hwnd, WM_SHOW_REQUESTED, IntPtr.Zero, IntPtr.Zero);
+    }
 
     // --------------------------------------------------------------------- tray
     private const uint WM_TRAY = 0x8001;          // WM_APP + 1
@@ -334,6 +366,17 @@ internal sealed class OverlayWindow : IDisposable
                 case WM_RBUTTONUP:
                     self.OnRightClick?.Invoke();
                     return IntPtr.Zero;
+                case WM_SHOW_REQUESTED:
+                    self.OnShowRequested?.Invoke();
+                    return IntPtr.Zero;
+                case WM_NCHITTEST:
+                {
+                    long lp = lParam.ToInt64();
+                    int sx = (short)(lp & 0xFFFF), sy = (short)((lp >> 16) & 0xFFFF);
+                    GetWindowRect(hWnd, out var wr);
+                    bool hit = self.HitTest?.Invoke(sx - wr.Left, sy - wr.Top) ?? false;
+                    return new IntPtr(hit ? 1 /*HTCLIENT*/ : -1 /*HTTRANSPARENT*/);
+                }
                 case WM_DISPLAYCHANGE:
                     self.PlaceTopCentre();
                     return IntPtr.Zero;
@@ -408,6 +451,9 @@ internal sealed class OverlayWindow : IDisposable
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr GetModuleHandle(string? name);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr dstDc, ref POINT dst, ref SIZE size, IntPtr srcDc, ref POINT src, uint key, ref BLENDFUNCTION blend, uint flags);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string? cls, string? win);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);

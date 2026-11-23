@@ -52,7 +52,22 @@ public partial class App : System.Windows.Application
         bool createdNew;
         _mutex = new Mutex(true, MutexName, out createdNew);
         _ownsMutex = createdNew;
-        if (!createdNew) { Shutdown(0); return; }
+        if (!createdNew)
+        {
+            // A second launch should not silently do nothing - ask the running island to show.
+            var existing = Overlay.OverlayWindow.FindExisting();
+            if (existing != IntPtr.Zero)
+            {
+                Overlay.OverlayWindow.RequestShow(existing);
+                Log.Info("second launch: asked the running island to show");
+            }
+            else
+            {
+                Log.Info("second launch: another instance is running but its window was not found");
+            }
+            Shutdown(0);
+            return;
+        }
 
         Log.Info("=== Float Island starting ===");
 
@@ -83,6 +98,14 @@ public partial class App : System.Windows.Application
             int ix = Array.IndexOf(e.Args, "--skia-bench");
             int frames = ix >= 0 && ix + 1 < e.Args.Length && int.TryParse(e.Args[ix + 1], out var n) ? n : 600;
             Overlay.SkiaMode.Bench(frames);
+            Shutdown(0);
+            return;
+        }
+        if (e.Args.Contains("--skia-demo", StringComparer.Ordinal))
+        {
+            int dx = Array.IndexOf(e.Args, "--skia-demo");
+            int secs = dx >= 0 && dx + 1 < e.Args.Length && int.TryParse(e.Args[dx + 1], out var ds) ? ds : 6;
+            Overlay.SkiaMode.LiveDemo(secs);
             Shutdown(0);
             return;
         }

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Fix: "ran it, nothing appeared". The island peeks for ~4.5 s on launch with a
+  *Waiting for Spotify...* pill, launch is now logged (show/hide/audio), and the log names
+  the SMTC session it found.
+- Fix: the overlay no longer swallows mouse clicks - the empty part of the surface is
+  hit-tested as `HTTRANSPARENT`, so only the island body is clickable.
+- New: launching the app a second time asks the running island to show itself instead of
+  exiting silently.
+- New: `--skia-demo [seconds]` draws a live sample player on the real layered window
+  (no Spotify needed) and logs window visibility + a bitmap alpha probe.
+- Docs: troubleshooting section, and a concrete note for Trend Micro AV blocks.
 - Visual pass over every Skia surface: album-tinted halo, glassy body highlight,
   solid white transport button, progress knob, bottom-edge playback line, audio bars
   on the collapsed pill and player, and a cleaner page indicator.
