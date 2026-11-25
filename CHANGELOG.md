@@ -1,5 +1,26 @@
 # Changelog
 
+## 2.2.2
+
+- Fix: **lyrics started in sync then slid off the vocal.** The lyric sheet was chosen by
+  declared run time alone, and LRCLIB has rows that match the studio cut's duration while
+  their timestamps belong to a different edit (official video, extended mix) - so line 1
+  landed on the voice and everything after drifted, up to ~50 s by the outro. Candidates are
+  now ranked on run time *and* where the sheet's own last timestamp falls
+  (`LrclibProvider.FitScore`). Measured on a live track: the pick for
+  *Last Friday Night (T.G.I.F.)* moved from a sheet ending at 4:43.69 (track is 3:50.73) to
+  one ending at 3:41.96.
+- New: if no correctly timed sheet exists, the timestamps are stretched onto the real run
+  time instead of drifting (logged as `LRCLIB: only sheet available ... stretched by`).
+- Karaoke rows (instrumental/karaoke LRCLIB entries) carry a small fit penalty so a vocal
+  sheet at the same run time is preferred.
+- Fix: a clock resync can no longer move the lyric clock backwards - it only advances it -
+  so a republished timeline value that lands behind the extrapolated clock cannot snap the
+  sweep back inside a line. Paused playback no longer extrapolates the clock at all
+  (`SkiaMode.LivePosition`).
+- `--lyrics-probe 'Title|Artist|Album|seconds'` accepts a track length, which is how the
+  sheet ranking is exercised without Spotify holding that track.
+
 ## 2.2.1
 
 - Fix: **lyrics ran ~3 s behind the audio.** Windows/Spotify only refresh the media

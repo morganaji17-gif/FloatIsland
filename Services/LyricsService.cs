@@ -105,30 +105,88 @@ public sealed class LrclibProvider : ILyricsProvider
         var candidates = JsonSerializer.Deserialize<List<LrcTrack>>(json, JsonOpts);
         if (candidates == null || candidates.Count == 0) return null;
 
-        // Prefer the closest duration match, then an artist-name match.
+        // Run time alone is not a fit test. LRCLIB carries community rows whose declared
+        // duration matches the studio cut while their timestamps are keyed to a different
+        // edit - the official video, an extended mix - so the first line lands on the vocal
+        // and every line after it drifts. That is exactly "in sync at the start, slides off
+        // later". Rank on run time *and* on where the sheet's own last timestamp falls.
+        double target = q.Duration.TotalSeconds;
         LrcTrack? best = null;
-        if (q.Duration > TimeSpan.Zero)
+
+        if (target > 0)
         {
-            double target = q.Duration.TotalSeconds;
-            best = candidates.Where(c => (c.Duration ?? 0) > 0)
-                             .OrderBy(c => Math.Abs((c.Duration ?? 0) - target))
-                             .FirstOrDefault();
-            if (best != null && Math.Abs((best.Duration ?? 0) - target) > 6) best = null;
+            best = candidates
+                .Where(c => (c.Duration ?? 0) > 0 && Math.Abs((c.Duration ?? 0) - target) <= 6)
+                .OrderBy(c => FitScore(c.Duration, c.SyncedLyrics, target, c.Instrumental))
+                .FirstOrDefault();
         }
         if (best == null && !string.IsNullOrWhiteSpace(q.Artist))
-            best = candidates.FirstOrDefault(c => c.ArtistName != null &&
-                c.ArtistName.Contains(q.Artist!, StringComparison.OrdinalIgnoreCase));
-        best ??= candidates[0];
+        {
+            best = candidates
+                .Where(c => c.ArtistName != null &&
+                            c.ArtistName.Contains(q.Artist!, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(c => target > 0 ? FitScore(c.Duration, c.SyncedLyrics, target, c.Instrumental) : 0)
+                .FirstOrDefault();
+        }
+        if (best == null)
+            best = target > 0
+                ? candidates.OrderBy(c => FitScore(c.Duration, c.SyncedLyrics, target, c.Instrumental)).First()
+                : candidates[0];
 
         var detail = best.Id is > 0 ? await GetAsync(best.Id!.Value, ct) ?? best : best;
         if (detail.Instrumental) return LyricsResult.Instrumental;
 
         var synced = ParseLrc(detail.SyncedLyrics);
-        if (synced.Count > 0) return new LyricsResult(LyricsKind.Synced, synced, detail.PlainLyrics);
+        if (synced.Count > 0)
+        {
+            double last = synced[^1].Time.TotalSeconds;
+            // Last resort: every candidate available is timed for a longer edit. Stretching
+            // the sheet onto the real run time is wrong in detail but tracks the vocal, where
+            // leaving it alone is a guaranteed, growing offset.
+            if (target > 0 && last > target * 1.08 && last > target + 6)
+            {
+                double k = target / last;
+                synced = Stretch(synced, k);
+                Log.Info($"LRCLIB: only sheet available ran to {last:F1}s on a {target:F1}s track " +
+                         $"- stretched by {k:F3}x");
+            }
+            Log.Info($"LRCLIB: pick id={detail.Id} dur={(detail.Duration ?? 0):F0}s lines={synced.Count} " +
+                     $"first={synced[0].Time:hh\\:mm\\:ss\\.ff} last={synced[^1].Time:hh\\:mm\\:ss\\.ff} " +
+                     $"target={target:F1}s instrumental={detail.Instrumental}");
+            return new LyricsResult(LyricsKind.Synced, synced, detail.PlainLyrics);
+        }
         if (!string.IsNullOrWhiteSpace(detail.PlainLyrics))
             return new LyricsResult(LyricsKind.Plain, null, detail.PlainLyrics);
         return null;
     }
+
+    /// <summary>How badly a search hit fits the playing track - lower is better. First term is
+    /// the declared-duration error; second is how far the sheet's last timestamp overshoots
+    /// the track. A sheet that simply ends early (outro, instrumental tail) is barely
+    /// penalised; a sheet that keeps going past the end is what a lyrics sheet for a longer
+    /// edit looks like, and playing it guarantees drift. Karaoke/instrumental rows carry a
+    /// small constant penalty so a vocal sheet at roughly the same fit is preferred, while a
+    /// genuinely instrumental track still resolves to its own row.</summary>
+    internal static double FitScore(double? durationSec, string? syncedLyrics, double targetSec,
+                                    bool instrumental = false)
+    {
+        double score = Math.Abs((durationSec ?? 0) - targetSec);
+        if (instrumental) score += 8;
+
+        var lines = ParseLrc(syncedLyrics);
+        if (lines.Count < 2) return score;
+
+        double over = lines[^1].Time.TotalSeconds - targetSec;
+        if (over > 6) score += over * 3;                    // runs past the audio: wrong edit
+        else if (over < -45) score += (-over - 45) * 0.25;  // stops far too early: probably too
+        return score;
+    }
+
+    /// <summary>Scales every timestamp by <paramref name="k"/>. Used only when no correctly
+    /// timed sheet exists for the track.</summary>
+    internal static List<LrcLine> Stretch(List<LrcLine> lines, double k) =>
+        lines.Select(l => l with { Time = TimeSpan.FromMilliseconds(l.Time.TotalMilliseconds * k) })
+             .ToList();
 
     private static async Task<LrcTrack?> GetAsync(int id, CancellationToken ct)
     {

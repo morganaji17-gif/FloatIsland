@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using SkiaSharp;
@@ -235,8 +236,14 @@ internal static class Diagnostics
             title = bits[0];
             artist = bits.Length > 1 ? bits[1] : null;
             album = bits.Length > 2 ? bits[2] : null;
+            // Optional 4th field: track length in seconds, so the candidate-ranking can be
+            // exercised without Spotify holding that track (see FitScore in LyricsService).
+            // Parsed as invariant: a comma-decimal locale reads "230.733" as 230733.
+            if (bits.Length > 3 && double.TryParse(bits[3], NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out var manualDur) && manualDur > 0)
+                dur = TimeSpan.FromSeconds(manualDur);
             mode = "all";
-            Log.Info($"{P} lyrics manual query title='{title}' artist='{artist}'");
+            Log.Info($"{P} lyrics manual query title='{title}' artist='{artist}' dur={dur}");
         }
         else
         {

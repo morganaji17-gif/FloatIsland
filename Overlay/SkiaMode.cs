@@ -396,15 +396,26 @@ internal static class SkiaMode
             if (t == null || t.Status != 2) return;
             lock (Gate)
             {
+                long now = Environment.TickCount64;
+                // The clock already running, extrapolated to this instant. A resync must never
+                // drag it backwards: Spotify republishes its timeline seconds apart, so a
+                // value that lands behind the running clock would snap the sweep back inside
+                // the line. A real backward seek arrives as its own timeline event, which
+                // runs a full refresh instead.
+                var projected = _pos + (_playing
+                    ? TimeSpan.FromMilliseconds(now - _posStamp)
+                    : TimeSpan.Zero);
+                var position = t.Position > projected ? t.Position : projected;
+
+                _pos = position;
+                _posStamp = now;
                 _playing = true;
-                _pos = t.Position;
-                _posStamp = Environment.TickCount64;
                 if (t.Duration > TimeSpan.Zero)
                 {
                     _durationTs = t.Duration;
-                    _progress = Math.Clamp(t.Position.TotalMilliseconds / t.Duration.TotalMilliseconds, 0, 1);
+                    _progress = Math.Clamp(position.TotalMilliseconds / t.Duration.TotalMilliseconds, 0, 1);
                     _duration = Fmt(t.Duration);
-                    _elapsed = Fmt(t.Position);
+                    _elapsed = Fmt(position);
                 }
             }
         }
@@ -420,6 +431,19 @@ internal static class SkiaMode
         if (Math.Abs(target - v) < 0.05f && Math.Abs(vel) < 0.4f) { v = target; vel = 0; }
     }
 
+    /// <summary>The playback clock as of right now. <see cref="_pos"/> is only true as of
+    /// <see cref="_posStamp"/>, so while playing the elapsed time is added on top; paused it
+    /// must not move at all. The lyric offset is subtracted here, so a positive value shows a
+    /// line that many milliseconds later (menu row "Lyrics sync").</summary>
+    private static TimeSpan LivePosition()
+    {
+        var pos = _pos;
+        if (_playing) pos += TimeSpan.FromMilliseconds(Environment.TickCount64 - _posStamp);
+        pos -= TimeSpan.FromMilliseconds(_lyricsOffsetMs);
+        if (pos < TimeSpan.Zero) return TimeSpan.Zero;
+        return _durationTs > TimeSpan.Zero && pos > _durationTs ? _durationTs : pos;
+    }
+
     private static float KaraokeProgress()
     {
         float s = (float)_window.Scale;
@@ -429,7 +453,7 @@ internal static class SkiaMode
         var start = Times[_index];
         var end = _index + 1 < Times.Count ? Times[_index + 1] : _durationTs;
         double span = (end - start).TotalMilliseconds;
-        var pos = _pos + TimeSpan.FromMilliseconds(Environment.TickCount64 - _posStamp - _lyricsOffsetMs);
+        var pos = LivePosition();
         return span <= 1 ? 1f : (float)Math.Clamp((pos - start).TotalMilliseconds / span, 0, 1);
     }
 
@@ -798,7 +822,7 @@ internal static class SkiaMode
     private static void TickIndex()
     {
         if (!_playing || Times.Count == 0) return;
-        var pos = _pos + TimeSpan.FromMilliseconds(Environment.TickCount64 - _posStamp - _lyricsOffsetMs);
+        var pos = LivePosition();
         int idx = -1;
         for (int i = Times.Count - 1; i >= 0; i--) if (Times[i] <= pos) { idx = i; break; }
         if (idx == _index) return;

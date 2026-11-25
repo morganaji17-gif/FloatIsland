@@ -37,6 +37,26 @@ internal static class SelfTest
         Eq(LrclibProvider.ParseLrc(null).Count, 0, "lrc: null input");
         Eq(LrclibProvider.ParseLrc("[00:01.00]   ").Count, 0, "lrc: blank text dropped");
 
+        // ---- lyrics sheet selection ----------------------------------------
+        // Two rows, identical declared run time, different edit: the sheet that runs past the
+        // track must lose even though its duration looks like a perfect match. This is the
+        // "starts in sync, drifts later" case (a video-timed sheet filed under the studio cut).
+        const double track = 230.733;
+        const string fits = "[00:07.19] first\n[03:45.16] last";     // ends 225.2 s
+        const string video = "[00:57.03] first\n[04:47.61] last";    // ends 287.6 s
+        Check(LrclibProvider.FitScore(231, fits, track) < 1, "lrc fit: matching sheet scores near zero");
+        Check(LrclibProvider.FitScore(231, video, track) > 100, "lrc fit: longer-edit sheet penalised");
+        Check(LrclibProvider.FitScore(231, video, track) > LrclibProvider.FitScore(231, fits, track),
+              "lrc fit: fitting sheet wins a run-time tie");
+        Check(LrclibProvider.FitScore(220, fits, track) > LrclibProvider.FitScore(231, fits, track),
+              "lrc fit: declared duration still counts");
+        Check(LrclibProvider.FitScore(231, fits, track, instrumental: true) >
+              LrclibProvider.FitScore(231, fits, track),
+              "lrc fit: vocal sheet preferred over a karaoke row");
+        var stretchedSheet = LrclibProvider.Stretch(LrclibProvider.ParseLrc(video), track / 287.61);
+        Eq(Math.Round(stretchedSheet[^1].Time.TotalSeconds, 1), Math.Round(track, 1),
+           "lrc: stretched sheet ends on the track");
+
         // ---- Spotify session matching -------------------------------------
         Check(TrackInfo.IsSpotifyApp("Spotify.exe"), "spotify: Spotify.exe");
         Check(TrackInfo.IsSpotifyApp("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify"), "spotify: package AUMID");

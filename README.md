@@ -261,6 +261,15 @@ If a track's lyrics are still a touch out - community LRC timings vary - the men
 the middle of the row to reset. The value is saved to `lyricsOffsetMs` and applied to both
 the karaoke sweep and the scrolling page. Steps are 0.1 s, clamped to ±5 s.
 
+Before that, the sheet itself is checked. LRCLIB is community data and carries rows whose
+declared run time matches the studio cut while their timestamps belong to a different edit -
+the official video, an extended mix - so the first line lands on the voice and every line
+after it drifts. Candidates are ranked on run time *and* on where the sheet's own last
+timestamp falls; a sheet that runs well past the track loses to one that fits, and if no
+correctly timed sheet exists at all the timestamps are stretched onto the real run time
+(logged as `LRCLIB: only sheet available ... stretched by`). That is what fixes "in sync at
+the start, sliding off later".
+
 Switching track updates the island immediately: the change arrives on the session's
 *media properties* event (a new `MediaPropertiesChanged` subscription), not on the next
 playback event, and a second read ~0.6 s later catches the moment right after a skip where
