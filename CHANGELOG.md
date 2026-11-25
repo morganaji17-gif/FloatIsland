@@ -1,6 +1,31 @@
 # Changelog
 
-## Unreleased
+## 2.2.1
+
+- Fix: **lyrics ran ~3 s behind the audio.** Windows/Spotify only refresh the media
+  timeline every few seconds (measured ~4.5 s), so reading `TimelineProperties.Position`
+  straight gave a position up to 3 s stale. The live position is now reconstructed from
+  `LastUpdatedTime` (capped at 8 s as a sanity bound) and re-anchored about once a second
+  while playing, so the karaoke sweep and the line index track the voice.
+- Fix: **a few seconds of lag when a track changed.** A track change inside the same
+  session raises `MediaPropertiesChanged`, which nothing was listening to - the island kept
+  the previous song (and its lyrics) until the next playback/timeline event. Now subscribed,
+  plus a follow-up read ~0.6 s later for the window right after a skip where Spotify can
+  still report the previous track's metadata.
+- New: the collapsed pill **widens with a long lyric** (up to 640 of the 720 DIP surface)
+  instead of clipping at a fixed 452; `--skia-shot` renders a `collapsed-long` sample that
+  logs the measured width as proof.
+- Lyrics sync steps are 0.1 s (were 0.5 s), clamped to ±5 s, since the clock fix leaves
+  only a small residue to trim.
+- Fix: seeking moved our own clock immediately instead of waiting for the next SMTC event.
+- Fix: `--selftest`, `--skia-shot`, `--skia-bench`, `--skia-demo` and `--make-icon` ran
+  behind the single-instance mutex, so on a machine with the island already up they exited
+  silently and *looked* like they passed. They now run before the mutex is taken - which is
+  also what the CI smoke test needs.
+- `--smtc-probe` now logs `LastUpdatedTime`, its age and the corrected position, which is
+  how the ~4.5 s re-publish cadence above was measured.
+
+## 2.2.0
 
 - New: **Settings surface** inside the island - drag sliders for **Size** (0.80-1.40x,
   scales the whole island including type) and **Opacity**, a live accent swatch strip

@@ -219,7 +219,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 | State | Surface | Size | How to reach it | What you get |
 |-------|---------|------|-----------------|--------------|
-| Collapsed | LINE | 136-452 x 36 | paused **or** playing | cover + one line: the current lyric, or `title - artist` when there is none; EQ bars and a bottom-edge progress line |
+| Collapsed | LINE | 136-640 x 36 | paused **or** playing | cover + one line: the current lyric, or `title - artist` when there is none. A long lyric widens the pill (up to 640 of the 720 DIP surface) instead of being cut off; EQ bars and a bottom-edge progress line |
 | Expanded | MUSIC | 432 x 176 | click the island | cover, title, artist, current lyric, seek, prev / play / next, lyric toggle, mascot |
 | Expanded | LYRICS | 576 x 176 | click the lyric toggle | two columns: cover/title/seek/controls left, divider, scrolling lyrics right |
 | Menu | MENU | 316 x 198-232 | right-click the island, or the tray icon | Music / Lyrics / Lyrics sync / Output: `<device>` / Launch at startup / Hide when stopped / Media hotkeys / Settings / Collapse / Exit |
@@ -250,10 +250,21 @@ Fallbacks are explicit and never fake: *Loading lyrics...*, *Instrumental track*
 
 ### Nudging the timing
 
-Community LRC timings are often a few hundred ms out. The menu row **Lyrics sync** adjusts
-a global nudge: click **-** to show lines earlier, **+** to show them later, or the middle
-of the row to reset. The value is saved to `lyricsOffsetMs` and applied to both the karaoke
-sweep and the scrolling page. Steps are 0.5 s, clamped to ±10 s.
+The lyric clock is anchored to Spotify's media timeline. Windows only refreshes those
+timeline properties every few seconds (measured: ~4.5 s against Spotify), so the raw
+position reads up to ~3 s behind the audio; Float Island reconstructs the live position
+from `LastUpdatedTime` and re-anchors about once a second while playing, so the sweep
+follows the voice rather than jumping in steps.
+
+If a track's lyrics are still a touch out - community LRC timings vary - the menu row
+**Lyrics sync** nudges them globally: click **-** to show lines earlier, **+** later, or
+the middle of the row to reset. The value is saved to `lyricsOffsetMs` and applied to both
+the karaoke sweep and the scrolling page. Steps are 0.1 s, clamped to ±5 s.
+
+Switching track updates the island immediately: the change arrives on the session's
+*media properties* event (a new `MediaPropertiesChanged` subscription), not on the next
+playback event, and a second read ~0.6 s later catches the moment right after a skip where
+Spotify can still hand out the previous track's metadata.
 
 ## Hotkeys
 

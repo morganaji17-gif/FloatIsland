@@ -28,6 +28,11 @@ internal static class Program
             return 0;
         }
 
+        // Offline / one-shot modes must run even while an island instance is already up.
+        // Behind the mutex they would silently no-op and "pass", which is exactly how a
+        // render smoke test lies to you on a machine with the app running.
+        if (OneShot(args) is { } once) return once;
+
         using var mutex = new Mutex(true, MutexName, out bool createdNew);
         if (!createdNew)
         {
@@ -47,6 +52,27 @@ internal static class Program
 
         Log.Info("=== Float Island starting ===");
 
+        try
+        {
+            // Default, and `--skia`: the overlay.
+            SkiaMode.Run();
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("fatal: " + ex);
+            return 1;
+        }
+        finally
+        {
+            try { mutex.ReleaseMutex(); } catch { }
+        }
+    }
+
+    /// <summary>Runs a non-overlay mode (self-test, offscreen shots, benches, icon drawing).
+    /// Returns null when the arguments do not select one.</summary>
+    private static int? OneShot(string[] args)
+    {
         try
         {
             if (args.Contains("--selftest", StringComparer.Ordinal))
@@ -75,20 +101,13 @@ internal static class Program
                 SkiaMode.LiveDemo(IntArg(args, "--skia-demo", 6));
                 return 0;
             }
-
-            // Default, and `--skia`: the overlay.
-            SkiaMode.Run();
-            return 0;
         }
         catch (Exception ex)
         {
             Log.Error("fatal: " + ex);
             return 1;
         }
-        finally
-        {
-            try { mutex.ReleaseMutex(); } catch { }
-        }
+        return null;
     }
 
     private static int IntArg(string[] args, string name, int fallback)

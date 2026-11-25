@@ -104,10 +104,15 @@ internal sealed class IslandRenderer : IDisposable
         return File.Exists(p) ? SKTypeface.FromFile(p) : SKTypeface.Default;
     }
 
+    /// <summary>Widest the collapsed pill may grow to. The overlay surface is 720 DIP wide, so
+    /// this leaves ~40 DIP on each side for the shadow and the hit-test flare. Long lyrics
+    /// widen the pill up to here instead of being clipped at a fixed size.</summary>
+    private const float MaxCollapsedDip = 640f;
+
     public float CollapsedWidthPx(string line, float s)
     {
         var p = P(_semi, 13 * s, White);
-        return Math.Clamp(p.MeasureText(line ?? "") + 82 * s, 136 * s, 452 * s);
+        return Math.Clamp(p.MeasureText(line ?? "") + 82 * s, 136 * s, MaxCollapsedDip * s);
     }
 
     /// <summary>Fixed collapsed width when the mascot is shown (cover + gap + cat + padding).</summary>
@@ -157,7 +162,7 @@ internal sealed class IslandRenderer : IDisposable
     private void DrawCollapsed(SKCanvas c, int w, float s, IslandFrame f, IslandLayout hit)
     {
         var tp = P(_semi, 13 * s, White);
-        float bodyW = Math.Clamp(tp.MeasureText(f.Line) + 82 * s, 136 * s, 452 * s);
+        float bodyW = CollapsedWidthPx(f.Line, s);
         float cx = w / 2f, xl = cx - bodyW / 2f, xr = cx + bodyW / 2f, ph = 36 * s;
 
         if (f.Cover != null && f.TintAmount > 0.02f)

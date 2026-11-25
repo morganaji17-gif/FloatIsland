@@ -217,6 +217,29 @@ public sealed class SMTCManager : IDisposable
         return snap;
     }
 
+    /// <summary>Cheap clock sync: reads only the playback status and timeline (no media
+    /// properties, no artwork), so the lyric clock can be re-anchored often without
+    /// touching metadata. Rebuilds the manager once on a dead session, like a full read.</summary>
+    public async Task<TrackInfo?> GetTimelineAsync()
+    {
+        if (!IsInitialized) await InitializeAsync();
+        if (_session == null) return null;
+        try
+        {
+            return ReadTimeline();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"SMTC timeline failed ({ex.Message}) - reinitialising");
+            await ReinitializeAsync();
+            if (_session == null) return null;
+            try { return ReadTimeline(); }
+            catch (Exception ex2) { Log.Warn($"SMTC timeline retry: {ex2.Message}"); return null; }
+        }
+    }
+
+    private TrackInfo? ReadTimeline() => _session == null ? null : TrackInfo.FromSession(_session);
+
     public async Task TogglePlayPauseAsync()
     {
         if (_session == null) return;

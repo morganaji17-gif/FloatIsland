@@ -151,8 +151,17 @@ internal static class Diagnostics
         {
             Thread.Sleep(1500);
             var tl = spotify.GetTimelineProperties();
+            // LastUpdatedTime is what the lyric clock correction relies on: the reported
+            // Position is only "true" as of that instant, so the live position is
+            // Position + (now - LastUpdatedTime) while playing.
+            var age = tl == null ? TimeSpan.Zero : DateTimeOffset.UtcNow - tl.LastUpdatedTime;
+            bool playing = spotify.GetPlaybackInfo()?.PlaybackStatus ==
+                           Windowish.GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            bool usable = playing && age > TimeSpan.Zero && age < TimeSpan.FromSeconds(8);
+            string corrected = tl == null ? "-" : (tl.Position + (usable ? age : TimeSpan.Zero)).ToString();
             Log.Info($"{P} t={sw.ElapsedMilliseconds / 1000}s status={spotify.GetPlaybackInfo()?.PlaybackStatus} " +
-                     $"pos={tl?.Position}");
+                     $"pos={tl?.Position} updated={tl?.LastUpdatedTime:HH:mm:ss.fff} ageMs={(int)age.TotalMilliseconds} " +
+                     $"corrected={corrected}");
         }
     }
 

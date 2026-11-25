@@ -64,6 +64,7 @@ internal static class SkiaMode
     private static int _lyricsOffsetMs;
     private static bool _fullscreen;
     private static long _lastFsCheck;
+    private static long _lastPosSync;
 
     // album wash
     private static SKColor _tint = new(8, 9, 11);
@@ -191,6 +192,12 @@ internal static class SkiaMode
                 await smtc.InitializeAsync();
                 smtc.PlaybackChanged += (_, _) => _ = RefreshAsync();
                 smtc.SessionChanged += (_, _) => _ = RefreshAsync();
+                // A track change inside the same session raises MediaPropertiesChanged (not
+                // PlaybackChanged), so without this the island kept the previous song - and its
+                // lyrics - for however long until the next playback event. This is that delay.
+                // The second pass catches Spotify handing out the previous track's metadata
+                // for a moment right after the skip.
+                smtc.MediaChanged += (_, _) => { _ = RefreshAsync(); _ = RefreshAfterAsync(600); };
                 await RefreshAsync();
                 if (!smtc.IsSpotifyActive)
                     Log.Info("[skia] no Spotify session yet - launch the Spotify desktop app. " +
@@ -225,6 +232,15 @@ internal static class SkiaMode
         _lastTick = now;
 
         TickIndex();
+
+        // Re-anchor the lyric clock against SMTC about once a second while playing. The
+        // timeline events Spotify raises are sparse, so extrapolating from the last one can
+        // drift; this keeps the sweep on the audio without polling metadata.
+        if (_playing && now - _lastPosSync > 1000)
+        {
+            _lastPosSync = now;
+            _ = ResyncClockAsync();
+        }
 
         // Get out of the way of fullscreen apps (games, fullscreen video), polled cheaply.
         if (now - _lastFsCheck > 500)
@@ -367,6 +383,32 @@ internal static class SkiaMode
         _renderer.Render(surface.Canvas, _window.Width, _window.Height, s, f, _hit, morph);
         surface.Canvas.Flush();
         return true;
+    }
+
+    /// <summary>Pulls the playback clock from SMTC (status + timeline only) and re-anchors
+    /// <see cref="_pos"/>, so a sparse timeline-event stream cannot let the lyric sweep drift
+    /// away from the audio.</summary>
+    private static async Task ResyncClockAsync()
+    {
+        try
+        {
+            var t = await Smtc.GetTimelineAsync();
+            if (t == null || t.Status != 2) return;
+            lock (Gate)
+            {
+                _playing = true;
+                _pos = t.Position;
+                _posStamp = Environment.TickCount64;
+                if (t.Duration > TimeSpan.Zero)
+                {
+                    _durationTs = t.Duration;
+                    _progress = Math.Clamp(t.Position.TotalMilliseconds / t.Duration.TotalMilliseconds, 0, 1);
+                    _duration = Fmt(t.Duration);
+                    _elapsed = Fmt(t.Position);
+                }
+            }
+        }
+        catch (Exception ex) { Log.Debug($"[skia] clock resync: {ex.Message}"); }
     }
 
     private static void Step(float target, ref float v, ref float vel, float dt)
@@ -534,6 +576,9 @@ internal static class SkiaMode
         {
             double frac = Math.Clamp((x - _hit.SeekTrack.Left) / _hit.SeekTrack.Width, 0, 1);
             _ = Smtc.SeekAsync(_durationTs * frac);
+            // Move our own clock with the seek now, so the sweep is right before SMTC's
+            // timeline event lands.
+            lock (Gate) { _pos = _durationTs * frac; _posStamp = Environment.TickCount64; }
             return;
         }
         SetSurface(Surface.Collapsed);
@@ -547,8 +592,10 @@ internal static class SkiaMode
         if (row.Width <= 1) return;
 
         float rel = (x - row.Left) / row.Width;
-        int step = rel < 0.42f ? -500 : rel > 0.58f ? 500 : int.MinValue;
-        _lyricsOffsetMs = step == int.MinValue ? 0 : Math.Clamp(_lyricsOffsetMs + step, -10000, 10000);
+        // 100 ms steps: after the SMTC clock fix the residue is small, and 0.5 s could not
+        // land on a tight alignment.
+        int step = rel < 0.42f ? -100 : rel > 0.58f ? 100 : int.MinValue;
+        _lyricsOffsetMs = step == int.MinValue ? 0 : Math.Clamp(_lyricsOffsetMs + step, -5000, 5000);
         Settings.Current.LyricsOffsetMs = _lyricsOffsetMs; Settings.Save();
         Log.Info($"[skia] lyrics offset {_lyricsOffsetMs} ms");
         RebuildMenu(); SetSurface(Surface.Menu);
@@ -665,6 +712,14 @@ internal static class SkiaMode
                 await Task.Delay(400 * attempt);
             }
         }
+    }
+
+    /// <summary>Runs a refresh a short moment later. Used after a track change, where Spotify
+    /// can still be serving the previous track's metadata for the first few hundred ms.</summary>
+    private static async Task RefreshAfterAsync(int ms)
+    {
+        try { await Task.Delay(ms); await RefreshAsync(); }
+        catch (Exception ex) { Log.Debug($"[skia] deferred refresh: {ex.Message}"); }
     }
 
     private static async Task RefreshOnceAsync()
@@ -941,6 +996,14 @@ internal static class SkiaMode
 
         f.Karaoke = 1f;
         ShotOne(r, dir, 650, 120, s, Surface.Collapsed, "collapsed", f);
+
+        // Proof that the collapsed pill follows a long lyric instead of clipping at a fixed
+        // width: with a long line it grows toward the 640 DIP cap (the window is 720).
+        string shortLine = f.Line;
+        f.Line = "We've come a long way from where we began and I'll tell you all about it when I see you again";
+        ShotOne(r, dir, WinW, WinH, s, Surface.Collapsed, "collapsed-long", f);
+        f.Line = shortLine;
+
         f.Karaoke = 0.72f;
         ShotOne(r, dir, WinW, WinH, s, Surface.Music, "music", f);
         ShotOne(r, dir, WinW, WinH, s, Surface.Lyrics, "lyrics", f);

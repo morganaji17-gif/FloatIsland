@@ -11,7 +11,7 @@
     <SelfContained>false</SelfContained>
     <AssemblyName>FloatIsland</AssemblyName>
     <RootNamespace>FloatIsland</RootNamespace>
-    <Version>2.2.0</Version>
+    <Version>2.2.1</Version>
     <Authors>Float Island contributors</Authors>
     <Product>Float Island</Product>
     <Description>Dynamic-island style top-edge overlay for Spotify on Windows 11.</Description>
