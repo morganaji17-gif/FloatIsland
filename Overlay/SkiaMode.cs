@@ -78,7 +78,7 @@ internal static class SkiaMode
     private const int CollapseAfterMs = 1500;
     private const int VolumeHoldMs = 1600;
 
-    private static readonly string[] Menu = new string[10];
+    private static readonly string[] Menu = new string[11];
     private static int _monCount = 1;
     private static float _vol;
     private static bool _volMuted;
@@ -90,6 +90,7 @@ internal static class SkiaMode
         string.IsNullOrWhiteSpace(AudioOutput.DeviceName) ? "Output" : "Output: " + AudioOutput.DeviceName;
     private static string MenuStartup() => "Launch at startup: " + (Startup.IsEnabled ? "On" : "Off");
     private static string MenuHide() => "Hide when stopped: " + (Settings.Current.HideWhenMusicStops ? "On" : "Off");
+    private static string MenuFullscreen() => "Hide when fullscreen: " + (Settings.Current.HideWhenFullscreen ? "On" : "Off");
     private static string MenuHotkeys() => "Media hotkeys: " + (Settings.Current.MediaHotkeys ? "On" : "Off");
 
     private static void RebuildMenu()
@@ -100,10 +101,11 @@ internal static class SkiaMode
         Menu[3] = MenuOutput();
         Menu[4] = MenuStartup();
         Menu[5] = MenuHide();
-        Menu[6] = MenuHotkeys();
-        Menu[7] = "Settings";
-        Menu[8] = "Collapse";
-        Menu[9] = "Exit";
+        Menu[6] = MenuFullscreen();         // get out of the way of games / fullscreen video
+        Menu[7] = MenuHotkeys();
+        Menu[8] = "Settings";
+        Menu[9] = "Collapse";
+        Menu[10] = "Exit";
     }
 
     /// <summary>Ctrl+Alt+Space / Left / Right drive Spotify through SMTC, with a short peek
@@ -155,7 +157,7 @@ internal static class SkiaMode
 
         _window.OnFrame = Frame;
         _window.OnLeftClick = Click;
-        _window.OnRightClick = () => { _beforeMenu = _surface; SetSurface(Surface.Menu); };
+        _window.OnRightClick = () => { _beforeMenu = _surface; SetSurface(Surface.Menu); Log.Info("[skia] menu open"); };
         _window.OnMouseMove = (x, y) => { _mouseInside = true; _mouseX = x; _mouseY = y; };
         _window.OnMouseLeave = () => { _mouseInside = false; _leftAt = Environment.TickCount64; _hover = -1; _menuHover = -1; };
         // Only the body is clickable; the rest of the 900x300 surface lets clicks through.
@@ -572,7 +574,9 @@ internal static class SkiaMode
     {
         if (_surface == Surface.Menu)
         {
-            switch (HitMenuRow(x, y))
+            int row = HitMenuRow(x, y);
+            Log.Info($"[skia] menu click {x},{y} row={row} rows={_hit.MenuRows.Length} scale={_window.Scale:0.###}");
+            switch (row)
             {
                 case 0: SetSurface(Surface.Music); return;
                 case 1: SetSurface(Surface.Lyrics); return;
@@ -580,10 +584,18 @@ internal static class SkiaMode
                 case 3: AudioOutput.CycleDevice(); RebuildMenu(); SetSurface(Surface.Menu); return;
                 case 4: Startup.IsEnabled = !Startup.IsEnabled; RebuildMenu(); SetSurface(Surface.Menu); return;
                 case 5: Settings.Current.HideWhenMusicStops = !Settings.Current.HideWhenMusicStops; Settings.Save(); RebuildMenu(); SetSurface(Surface.Menu); return;
-                case 6: Settings.Current.MediaHotkeys = !Settings.Current.MediaHotkeys; Settings.Save(); ApplyHotkeys(); RebuildMenu(); SetSurface(Surface.Menu); return;
-                case 7: SetSurface(Surface.Settings); return;
-                case 8: SetSurface(Surface.Collapsed); return;
-                case 9: _window.Close(); return;
+                case 6:
+                    // Turning it off must bring the island back immediately, not on the next
+                    // half-second fullscreen poll.
+                    Settings.Current.HideWhenFullscreen = !Settings.Current.HideWhenFullscreen;
+                    Settings.Save();
+                    if (!Settings.Current.HideWhenFullscreen) { _fullscreen = false; _lastFsCheck = 0; }
+                    Log.Info($"[skia] hide when fullscreen {(Settings.Current.HideWhenFullscreen ? "On" : "Off")}");
+                    RebuildMenu(); SetSurface(Surface.Menu); return;
+                case 7: Settings.Current.MediaHotkeys = !Settings.Current.MediaHotkeys; Settings.Save(); ApplyHotkeys(); RebuildMenu(); SetSurface(Surface.Menu); return;
+                case 8: SetSurface(Surface.Settings); return;
+                case 9: SetSurface(Surface.Collapsed); return;
+                case 10: _window.Close(); return;
                 default: SetSurface(_beforeMenu); return;
             }
         }
@@ -1015,7 +1027,7 @@ internal static class SkiaMode
             AudioActive = true,
             Beat = 0.25f,
             LyricsOffsetMs = 500,
-            MenuLabels = new[] { "Music", "Lyrics", "Lyrics sync", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Media hotkeys: On", "Settings", "Collapse", "Exit" },
+            MenuLabels = new[] { "Music", "Lyrics", "Lyrics sync", "Output: Speakers", "Launch at startup: On", "Hide when stopped: On", "Hide when fullscreen: On", "Media hotkeys: On", "Settings", "Collapse", "Exit" },
         };
 
         f.Karaoke = 1f;

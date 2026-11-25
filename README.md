@@ -222,7 +222,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 | Collapsed | LINE | 136-640 x 36 | paused **or** playing | cover + one line: the current lyric, or `title - artist` when there is none. A long lyric widens the pill (up to 640 of the 720 DIP surface) instead of being cut off; EQ bars and a bottom-edge progress line |
 | Expanded | MUSIC | 432 x 176 | click the island | cover, title, artist, current lyric, seek, prev / play / next, lyric toggle, mascot |
 | Expanded | LYRICS | 576 x 176 | click the lyric toggle | two columns: cover/title/seek/controls left, divider, scrolling lyrics right |
-| Menu | MENU | 316 x 198-232 | right-click the island, or the tray icon | Music / Lyrics / Lyrics sync / Output: `<device>` / Launch at startup / Hide when stopped / Media hotkeys / Settings / Collapse / Exit |
+| Menu | MENU | 316 x 198-232 | right-click the island, or the tray icon | Music / Lyrics / Lyrics sync / Output: `<device>` / Launch at startup / Hide when stopped / Hide when fullscreen / Media hotkeys / Settings / Collapse / Exit |
 | Settings | SETTINGS | 316 x 232 | the **Settings** menu row | scale + opacity sliders, an accent swatch strip, a monitor stepper, Back |
 | Volume | VOLUME | 236 x 44 | change the system volume | speaker icon, level bar, percentage; auto-dismisses after 1.6 s |
 
@@ -293,7 +293,7 @@ They drive Spotify through the same SMTC transport the buttons use, and flash th
 ## Fullscreen
 
 While a fullscreen app is in the foreground (a game, a fullscreen video), the island hides
-itself and comes back when you leave. Toggle with `hideWhenFullscreen` in settings. It
+itself and comes back when you leave. Toggle it from the menu row **Hide when fullscreen** (or `hideWhenFullscreen` in settings) - turn it off and the island stays up over fullscreen apps. It
 compares the foreground window against the whole monitor rect, so a merely maximised
 window (taskbar still visible) does not count.
 
@@ -359,7 +359,7 @@ in `%APPDATA%\FloatIsland\settings.json`.
 | `lyricsFolder` | - | folder scanned for local lyrics |
 | `lyricsOffsetMs` | 0 | lyric timing nudge in ms (+ = later) |
 | `mediaHotkeys` | true | Ctrl+Alt+Space / Left / Right |
-| `hideWhenFullscreen` | true | hide while a fullscreen app is focused |
+| `hideWhenFullscreen` | true | menu: *Hide when fullscreen* |
 | `uiScale` | 1.0 | overall size, 0.80-1.40 (type scales with it) |
 | `opacity` | 1.0 | whole-island opacity, 0.40-1.00 |
 | `accent` | Album | Album / Green / Blue / Pink / Amber / Mono |

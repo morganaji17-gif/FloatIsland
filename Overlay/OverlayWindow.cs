@@ -126,8 +126,11 @@ internal sealed class OverlayWindow : IDisposable
     // --------------------------------------------------------- cross-instance show
     public const uint WM_SHOW_REQUESTED = 0x8002; // WM_APP + 2
 
-    /// <summary>Finds an already-running Skia island window, if any.</summary>
-    public static IntPtr FindExisting() => FindWindow("FloatIslandSkia", "FloatIsland");
+    /// <summary>Finds an already-running Skia island window, if any. Matched by class only:
+    /// the window title can come back truncated from the layered/tool window (measured "F"),
+    /// and a title match then silently finds nothing - which is how a second launch ended up
+    /// doing nothing at all.</summary>
+    public static IntPtr FindExisting() => FindWindow("FloatIslandSkia", null);
 
     /// <summary>Asks a running island (in another process) to show itself.</summary>
     public static void RequestShow(IntPtr hwnd)
@@ -222,6 +225,10 @@ internal sealed class OverlayWindow : IDisposable
             0, 0, w, h, IntPtr.Zero, IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
 
         if (Handle == IntPtr.Zero) throw new InvalidOperationException("CreateWindowEx failed: " + Marshal.GetLastWin32Error());
+        // The title passed to CreateWindowEx does not survive on this layered tool window
+        // (read back as a single character), so set it explicitly - the window is otherwise
+        // nameless to anything that looks it up by name.
+        SetWindowTextW(Handle, "FloatIsland");
         Live[Handle] = this;
 
         Scale = GetDpiForWindow(Handle) / 96.0;
@@ -543,6 +550,9 @@ internal sealed class OverlayWindow : IDisposable
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
     [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern bool SetWindowTextW(IntPtr h, string text);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindow(string? cls, string? win);
     [DllImport("user32.dll")] private static extern bool RegisterHotKey(IntPtr h, int id, uint mods, uint vk);
     [DllImport("user32.dll")] private static extern bool UnregisterHotKey(IntPtr h, int id);

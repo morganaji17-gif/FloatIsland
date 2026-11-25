@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.2.3
+
+- New: menu row **Hide when fullscreen** - the behaviour existed but was only reachable by
+  editing `settings.json`. Turn it off and the island stays up over games and fullscreen
+  video; turn it back on and it steps out of the way again. The row reads its state
+  (`On`/`Off`), saves immediately, and turning it off brings the island back on the next
+  frame instead of waiting for the half-second fullscreen poll.
+- Fix: a second launch (shortcut, Start menu, Windows search) could not find the running
+  island - `FindWindow` matched class *and* title, and the overlay's title did not survive
+  creation, so the lookup found nothing and the launch silently did nothing. The window now
+  gets its title set explicitly and is matched by class only.
+- App registration so it shows up as an installed app: Start menu shortcut (both
+  `Float Island` and `FloatIsland` spellings), `App Paths\FloatIsland.exe`, an
+  *Applications* entry, and an *Uninstall* entry for Settings > Apps.
+
 ## 2.2.2
 
 - Fix: **lyrics started in sync then slid off the vocal.** The lyric sheet was chosen by
