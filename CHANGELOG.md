@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.2.4
+
+- Fix: the island could vanish without a word. `ComputeTint()` read the cover art through
+  `SKBitmap.FromImage`, which copies the decoded image via `sk_image_read_pixels`; a refresh
+  that swapped in the next track's artwork disposed the old image while that copy was still
+  reading it, and the process died with `0xc0000005` in `coreclr.dll` - no log line, no
+  dialog, just gone (Event Viewer: *Application Error / .NET Runtime 1026*, faulting module
+  `coreclr.dll`, stack `SKBitmap.FromImage -> SkiaMode.ComputeTint`). Now:
+  - the tint is sampled from a 64x64 raster surface, and only from an image the caller owns,
+    so no other thread can free it mid-read;
+  - refreshes are serialised (`SemaphoreSlim`), so two `MediaChanged` / `PlaybackChanged`
+    events can no longer interleave a cover swap;
+  - replaced covers are retired and disposed on the frame thread after the frame that could
+    still reference them has been painted.
+- Fix: the `[skia] rect ...` placement probe logged every 2 s at INFO - about 43k lines a day.
+  It is now DEBUG.
+
 ## 2.2.3
 
 - New: menu row **Hide when fullscreen** - the behaviour existed but was only reachable by

@@ -367,7 +367,7 @@ internal sealed class OverlayWindow : IDisposable
         if (now - _lastRectLog > 2000)
         {
             _lastRectLog = now;
-            Log.Info($"[skia] rect L={rect.Left} T={rect.Top} W={rect.Right - rect.Left} H={rect.Bottom - rect.Top} centre={rect.Left + (rect.Right - rect.Left) / 2}");
+            Log.Debug($"[skia] rect L={rect.Left} T={rect.Top} W={rect.Right - rect.Left} H={rect.Bottom - rect.Top} centre={rect.Left + (rect.Right - rect.Left) / 2}");
         }
     }
 

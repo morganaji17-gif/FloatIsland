@@ -20,6 +20,14 @@ internal static class SkiaMode
     private static Surface _beforeMenu = Surface.Collapsed;
     private static string _title = "", _artist = "";
     private static SKImage? _cover;
+    /// <summary>Covers replaced since the last painted frame. They are only disposed on the
+    /// frame thread, after the frame that could still reference them has been drawn - a
+    /// Dispose from the SMTC callback thread used to pull the pixels out from under
+    /// SKImage.ReadPixels and take the process down with an access violation.</summary>
+    private static readonly List<SKImage> Retired = new();
+    /// <summary>Serialises refreshes: PlaybackChanged, SessionChanged and MediaChanged can all
+    /// fire at once, and two overlapping thumbnail swaps are what freed a cover mid-read.</summary>
+    private static readonly SemaphoreSlim RefreshGate = new(1, 1);
     private static bool _playing, _hasTrack, _hasLyrics;
     private static double _progress;
     private static string _elapsed = "--:--", _duration = "--:--";
@@ -290,6 +298,13 @@ internal static class SkiaMode
 
         lock (Gate)
         {
+            // The frame that could still have referenced these has already been painted, so
+            // this is the safe point to free a cover that was swapped out by a refresh.
+            if (Retired.Count > 0)
+            {
+                foreach (var old in Retired) old.Dispose();
+                Retired.Clear();
+            }
             f.Title = _title; f.Artist = _artist; f.Cover = _cover;
             f.Playing = _playing; f.HasTrack = _hasTrack; f.Progress = _progress;
             f.Elapsed = _elapsed; f.Duration = _duration;
@@ -485,50 +500,84 @@ internal static class SkiaMode
     }
 
     // ──────────────────────────────────────────────────────────────────── wash tint
-    private static void ComputeTint()
+    private static void ComputeTint(SKImage? img)
     {
-        _tint = new SKColor(8, 9, 11);
-        _hasTint = false;
+        var tint = new SKColor(8, 9, 11);
+        bool hasTint = false;
         try
         {
-            if (_cover != null)
+            if (img != null && img.Width > 0 && img.Height > 0)
             {
-                using var bmp = SKBitmap.FromImage(_cover);
-                long r = 0, g = 0, b = 0, n = 0, sr = 0, sg = 0, sb = 0, sn = 0;
-                for (int y = 0; y < bmp.Height; y += 3)
-                    for (int x = 0; x < bmp.Width; x += 3)
-                    {
-                        var p = bmp.GetPixel(x, y);
-                        r += p.Red; g += p.Green; b += p.Blue; n++;
-                        int mx = Math.Max(p.Red, Math.Max(p.Green, p.Blue)), mn = Math.Min(p.Red, Math.Min(p.Green, p.Blue));
-                        if (mx > 0 && mx - mn > 40) { sr += p.Red; sg += p.Green; sb += p.Blue; sn++; }
-                    }
-                if (n > 0)
+                // Sample through a 64x64 raster surface instead of SKBitmap.FromImage. FromImage
+                // copies the whole decoded image through sk_image_read_pixels, and when the cover
+                // was swapped and disposed by another refresh mid-copy the native read walked into
+                // freed memory and killed the process with 0xc0000005. Here the source is a local
+                // the caller owns for the whole call, and only 64x64 pixels are ever touched.
+                int w = Math.Min(img.Width, 64), h = Math.Min(img.Height, 64);
+                var info = new SKImageInfo(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
+                using var surface = SKSurface.Create(info);
+                if (surface != null)
                 {
-                    _tint = sn > 0 ? new SKColor((byte)(sr / sn), (byte)(sg / sn), (byte)(sb / sn))
-                                   : new SKColor((byte)(r / n), (byte)(g / n), (byte)(b / n));
-                    _hasTint = true;
+                    surface.Canvas.Clear(SKColors.Black);
+                    using (var paint = new SKPaint { IsAntialias = false })
+                        surface.Canvas.DrawImage(img, new SKRect(0, 0, w, h), paint);
+                    surface.Canvas.Flush();
+                    using var pix = surface.PeekPixels();
+                    if (pix != null)
+                    {
+                        long r = 0, g = 0, b = 0, n = 0, sr = 0, sg = 0, sb = 0, sn = 0;
+                        for (int y = 0; y < h; y++)
+                            for (int x = 0; x < w; x++)
+                            {
+                                var p = pix.GetPixelColor(x, y);
+                                r += p.Red; g += p.Green; b += p.Blue; n++;
+                                int mx = Math.Max(p.Red, Math.Max(p.Green, p.Blue)), mn = Math.Min(p.Red, Math.Min(p.Green, p.Blue));
+                                if (mx > 0 && mx - mn > 40) { sr += p.Red; sg += p.Green; sb += p.Blue; sn++; }
+                            }
+                        if (n > 0)
+                        {
+                            tint = sn > 0 ? new SKColor((byte)(sr / sn), (byte)(sg / sn), (byte)(sb / sn))
+                                          : new SKColor((byte)(r / n), (byte)(g / n), (byte)(b / n));
+                            hasTint = true;
+                        }
+                    }
                 }
             }
         }
-        catch { }
-        Log.Info($"[skia] tint #{_tint.Red:X2}{_tint.Green:X2}{_tint.Blue:X2} hasTint={_hasTint}");
+        catch (Exception ex) { Log.Debug("[skia] tint: " + ex.Message); }
 
         // Keep light covers from turning the island a washed-out grey: darken a bright tint
         // while preserving its hue, so white/cream art still reads as a dark tinted surface.
-        if (_hasTint) _tint = DarkenIfBright(_tint);
+        if (hasTint) tint = DarkenIfBright(tint);
 
         var baseC = new SKColor(8, 9, 11);
         double k = 0.62;
-        var left = Mix(baseC, _tint, k);
-        while (k > 0.02 && Contrast(SKColors.White, left) < 4.6) { k -= 0.02; left = Mix(baseC, _tint, k); }
+        var left = Mix(baseC, tint, k);
+        while (k > 0.02 && Contrast(SKColors.White, left) < 4.6) { k -= 0.02; left = Mix(baseC, tint, k); }
         double kr = Math.Min(k * 0.55, 0.34);
-        var right = Mix(baseC, _tint, kr);
+        var right = Mix(baseC, tint, kr);
         while (kr > 0 && Contrast(Mix(right, SKColors.White, 0.62), right) < 4.6)
         {
-            kr = Math.Max(kr - 0.02, 0); right = Mix(baseC, _tint, kr);
+            kr = Math.Max(kr - 0.02, 0); right = Mix(baseC, tint, kr);
         }
-        _washL = left; _washR = right; _washM = Mix(left, right, 0.5);
+
+        lock (Gate)
+        {
+            _tint = tint; _hasTint = hasTint;
+            _washL = left; _washR = right; _washM = Mix(left, right, 0.5);
+        }
+        Log.Info($"[skia] tint #{tint.Red:X2}{tint.Green:X2}{tint.Blue:X2} hasTint={hasTint}");
+    }
+
+    /// <summary>Swaps the cover and retires the old one. The old image is not disposed here:
+    /// the frame thread may still be drawing it, or a frame may have snapshotted it.</summary>
+    private static void PublishCover(SKImage? img)
+    {
+        lock (Gate)
+        {
+            if (_cover != null) Retired.Add(_cover);
+            _cover = img;
+        }
     }
 
     private static SKColor DarkenIfBright(SKColor c)
@@ -738,16 +787,21 @@ internal static class SkiaMode
     // ────────────────────────────────────────────────────────────────── smtc/lyrics
     private static async Task RefreshAsync()
     {
-        for (int attempt = 1; attempt <= 3; attempt++)
+        await RefreshGate.WaitAsync();
+        try
         {
-            try { await RefreshOnceAsync(); return; }
-            catch (Exception ex)
+            for (int attempt = 1; attempt <= 3; attempt++)
             {
-                Log.Warn($"[skia] refresh {attempt}/3: {ex.Message}");
-                if (attempt == 3) { Log.Error("[skia] refresh gave up: " + ex.Message); return; }
-                await Task.Delay(400 * attempt);
+                try { await RefreshOnceAsync(); return; }
+                catch (Exception ex)
+                {
+                    Log.Warn($"[skia] refresh {attempt}/3: {ex.Message}");
+                    if (attempt == 3) { Log.Error("[skia] refresh gave up: " + ex.Message); return; }
+                    await Task.Delay(400 * attempt);
+                }
             }
         }
+        finally { RefreshGate.Release(); }
     }
 
     /// <summary>Runs a refresh a short moment later. Used after a track change, where Spotify
@@ -790,8 +844,14 @@ internal static class SkiaMode
                     using var ms = new MemoryStream();
                     using (var rs = stream.AsStreamForRead()) await rs.CopyToAsync(ms);
                     var img = SKImage.FromEncodedData(ms.ToArray());
-                    lock (Gate) { _cover?.Dispose(); _cover = img; }
-                    ComputeTint();
+                    if (img != null)
+                    {
+                        // Tint first, publish second: the image is a local until it is published,
+                        // so nothing can dispose it while the pixels are being read.
+                        ComputeTint(img);
+                        PublishCover(img);
+                    }
+                    else Log.Debug("[skia] cover: decode returned null");
                 }
                 catch { }
             }
