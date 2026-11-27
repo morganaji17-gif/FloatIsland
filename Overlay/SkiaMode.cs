@@ -226,7 +226,7 @@ internal static class SkiaMode
         _window.OnTrayExit = () => _window.Close();
         _window.OnHotkey = OnHotkey;
         ApplyHotkeys();
-        Log.Info("[skia] overlay running (skia path)");
+        Log.Info($"[skia] overlay running (skia path) {IslandRenderer.VersionLabel()}");
         OverlayWindow.RunLoop();
         OverlayWindow.UnregisterHotkeys(_window.Handle);
         _window.RemoveTray();

@@ -1322,10 +1322,12 @@ private SKPaint P(SKTypeface tf, float size, SKColor color)
         }
     }
 
-    private static string VersionLabel()
+    internal static string VersionLabel()
     {
+        // Major.Minor only printed "v2.2" on a 2.2.4 build, which reads as "still on 2.2" -
+        // the badge has to show the patch number the release was cut from.
         var v = typeof(IslandRenderer).Assembly.GetName().Version;
-        return v == null ? "v2.1" : $"v{v.Major}.{v.Minor}";
+        return v == null ? "v0.0.0" : $"v{v.Major}.{v.Minor}.{v.Build}";
     }
 
     public void Dispose()

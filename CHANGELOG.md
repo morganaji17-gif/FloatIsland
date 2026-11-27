@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.2.5
+
+- Fix: the version badge in the menu and Settings read `v2.2` on every 2.2.x build, because
+  it printed major.minor only. It now prints the full `v2.2.5`, so the badge actually tells
+  you which build is running.
+
 ## 2.2.4
 
 - Fix: the island could vanish without a word. `ComputeTint()` read the cover art through
